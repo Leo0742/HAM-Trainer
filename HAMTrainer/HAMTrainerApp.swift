@@ -32,6 +32,10 @@ struct SnapshotRootView: View {
         guard let index = CommandLine.arguments.firstIndex(of: "--snapshot-question"), CommandLine.arguments.indices.contains(index + 1), let number = Int(CommandLine.arguments[index + 1]) else { return nil }
         return store.questions.first(where: { $0.examNumber == number })
     }
+    private var snapshotGlossary: GlossaryEntry? {
+        guard let index = CommandLine.arguments.firstIndex(of: "--snapshot-glossary"), CommandLine.arguments.indices.contains(index + 1) else { return nil }
+        return store.glossary.first(where: { $0.id == CommandLine.arguments[index + 1] })
+    }
     private var snapshotColorScheme: ColorScheme? {
         guard CommandLine.arguments.contains("--snapshot") else { return nil }
         guard let index = CommandLine.arguments.firstIndex(of: "--appearance"), CommandLine.arguments.indices.contains(index + 1) else { return nil }
@@ -40,6 +44,7 @@ struct SnapshotRootView: View {
     var body: some View {
         Group {
             if let snapshotQuestion { QuestionDetailView(question: snapshotQuestion) }
+            else if let snapshotGlossary { GlossaryCard(entry: snapshotGlossary) }
             else { MainView() }
         }.preferredColorScheme(snapshotColorScheme).background(SnapshotCaptureView())
     }

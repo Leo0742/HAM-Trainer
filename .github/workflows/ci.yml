@@ -10,17 +10,15 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - name: Rebuild curated content
-        run: |
-          python3 Tools/curate_content.py
-          python3 Tools/build_content.py
+      - name: Merge immutable authored content
+        run: python3 Tools/build_content.py
       - name: Validate content and source mappings
         run: |
           python3 Tools/validate_content.py
           python3 Tools/audit_content.py
       - name: Verify reproducible generated files
-        run: git diff --exit-code -- Content ContentOverrides docs
+        run: git diff --exit-code -- Content ContentAuthored ContentRaw ContentOverrides docs
       - name: Run Swift regression tests and scheduler simulation
         run: Tools/run_tests.sh
-      - name: Build release binary
-        run: swift build --disable-sandbox -c release
+      - name: Build release app
+        run: Tools/build_app.sh

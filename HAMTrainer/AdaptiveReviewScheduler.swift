@@ -143,7 +143,7 @@ struct AdaptiveReviewScheduler: Sendable {
         let maxPerTopic = max(1, Int(ceil(Double(limit) * 0.4)))
         var deferred: [StudyCard] = []
         for card in candidates where result.count < limit && !result.contains(where: { $0.id == card.id }) {
-            if result.count(where: { $0.question.topic == card.question.topic }) < maxPerTopic {
+            if result.filter({ $0.question.topic == card.question.topic }).count < maxPerTopic {
                 result.append(card)
             } else {
                 deferred.append(card)
