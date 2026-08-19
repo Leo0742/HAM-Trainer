@@ -74,9 +74,9 @@ struct DashboardView: View {
     @EnvironmentObject private var store: AppStore
     @Binding var section: AppSection?
 
-    private func count(_ state: LearningState) -> Int { store.progress.values.count(where: { $0.state == state }) }
-    private var unseen: Int { store.questions.count - store.progress.values.count(where: { $0.state != .unseen }) }
-    private var due: Int { store.questions.count(where: store.isDue) }
+    private func count(_ state: LearningState) -> Int { store.progress.values.filter { $0.state == state }.count }
+    private var unseen: Int { store.questions.count - store.progress.values.filter { $0.state != .unseen }.count }
+    private var due: Int { store.questions.filter(store.isDue).count }
     private var accuracy: Int {
         let attempts = store.progress.values.reduce(0) { $0 + $1.correctCount + $1.incorrectCount + $1.dontKnowCount + $1.revealedCount }
         let correct = store.progress.values.reduce(0) { $0 + $1.correctCount }

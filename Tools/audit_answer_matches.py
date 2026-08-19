@@ -13,7 +13,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def normalized(value: str) -> str:
     value = value.lower().replace("ё", "е")
-    return re.sub(r"[^a-zа-я0-9]+", "", value)
+    value = value.replace("≤", "<=").replace("≥", ">=")
+    return re.sub(r"[^a-zа-я0-9<>=]+", "", value)
 
 
 def main() -> None:
@@ -47,7 +48,8 @@ def main() -> None:
             unresolved.append(number)
 
         matched = options[index]
-        production = next(option for option in options if option["id"] == question["correctOptionId"])
+        production_id = override.get("correctOptionId", question["correctOptionId"])
+        production = next(option for option in options if option["id"] == production_id)
         source = override.get("sourceReference", question["sourceReference"])
         row = {
             "questionNumber": number,

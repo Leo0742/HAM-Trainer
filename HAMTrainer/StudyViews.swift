@@ -15,7 +15,7 @@ struct SmartStudyView: View {
                     Spacer()
                     Image(systemName: "sparkles").font(.system(size: 46)).foregroundStyle(.tint)
                     Text("Умная учёба").font(.system(size: 34, weight: .bold, design: .rounded))
-                    Text("Сессия сначала берёт созревшие слабые вопросы, затем новые и обычные повторы. Интервалы измеряются количеством отвеченных карточек, а не днями.")
+                    Text("Сессия сначала берёт созревшие слабые и обычные повторы, затем новые вопросы. Интервалы измеряются количеством отвеченных карточек, а не днями.")
                         .font(.title3).foregroundStyle(.secondary).frame(maxWidth: 700, alignment: .leading)
                     Picker("Длина", selection: $length) {
                         ForEach([10, 20, 30, 40], id: \.self) { Text("\($0) вопросов").tag($0) }

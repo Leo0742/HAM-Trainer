@@ -1,15 +1,12 @@
 #!/usr/bin/env python3
-"""Merge normalized exam data with deterministic educational enrichment.
-
-The PDF importer writes ContentRaw/questions-imported.json. This script owns the
-generated teaching layer. ContentOverrides/question-overrides.json is applied
-last, so curated corrections are never destroyed by a later source import.
-"""
+"""Merge the official bank with the immutable authored educational layer."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
+import unicodedata
 from collections import Counter
 from pathlib import Path
 
@@ -20,7 +17,9 @@ ROOT = Path(__file__).resolve().parents[1]
 # the question's provenance page and contains only the diagram, never the red
 # answer key printed beside it.
 FIGURE_PAGES = {
+    32: 127,
     136: 151, 137: 152, 138: 152, 139: 153, 140: 153, 141: 154, 142: 154,
+    180: 163,
     263: 181, 322: 196, 323: 196, 326: 197, 327: 198, 328: 198,
     331: 199, 332: 200, 341: 202, 342: 203, 343: 203, 344: 204,
     353: 207, 354: 207, 355: 208, 406: 221, 407: 221,
@@ -170,53 +169,30 @@ TERM_DATA = [
     ("electric-shock", "Поражение током", "электротравма|электробезопасность", "Опасное прохождение электрического тока через тело человека.", "Сначала безопасно отключают питание, затем оказывают помощь и вызывают экстренные службы."),
     ("rf-burn", "ВЧ-ожог", "радиочастотный ожог", "Повреждение ткани высокочастотным током, которое возможно у антенны и в передающем тракте.", "Не касаются элементов антенны и открытых ВЧ-цепей во время передачи."),
     ("fire-safety", "Пожарная безопасность", "пожар|огнетушитель", "Меры предотвращения возгорания и правильные действия при пожаре электрооборудования.", "Сначала обесточивают установку; воду нельзя применять к оборудованию под напряжением."),
+    ("personal-radio", "Безлицензионная персональная радиосвязь", "cb|lpd|pmr", "CB, LPD и PMR используют собственные правила и не относятся к любительской службе.", "Близкая частота не превращает портативную PMR-станцию в любительскую."),
+    ("arnec", "ARNEC", "cept novice|erc32", "Гармонизированный экзаменационный сертификат начального уровня CEPT Novice.", "ARNEC подтверждает экзамен новичка, тогда как HAREC соответствует полному уровню."),
+    ("ctcss", "CTCSS", "субтон|тональный шумоподавитель", "Низкочастотный служебный тон, который открывает шумоподавитель ретранслятора или приёмника.", "Трансивер передаёт выбранный субтон вместе с речью для доступа к ретранслятору."),
+    ("dsp", "DSP", "цифровая обработка сигналов", "Обработка оцифрованного сигнала математическими алгоритмами.", "DSP-фильтр может сузить полосу приёма и подавить устойчивую помеху."),
+    ("dx", "DX", "дальняя радиосвязь", "Радиосвязь с удалённой станцией или редкой страной.", "Условия прохождения и направленная антенна помогают провести дальнее DX-QSO."),
+    ("pep", "PEP", "пиковая мощность огибающей", "Мощность передатчика на максимуме огибающей модулированного сигнала.", "Для SSB PEP оценивают на вершинах речевой или двухтональной огибающей."),
+    ("qso", "QSO", "радиосвязь|сеанс связи", "Завершённый или текущий радиообмен между станциями.", "Во время QSO операторы обмениваются позывными, рапортами и другой информацией."),
+    ("qrt", "QRT", "прекращение работы", "Q-код сообщения о прекращении передачи или работы в эфире.", "Фраза «QRT» означает, что станция заканчивает работу."),
+    ("qrz", "QRZ", "кто меня вызывает", "Q-код вопроса о том, какая станция вызывает оператора.", "Если позывной не разобран, оператор передаёт «QRZ?»."),
+    ("muf", "МПЧ", "максимально применимая частота", "Наибольшая частота, которая при данных условиях ещё возвращается ионосферой на нужную трассу.", "Выше МПЧ сигнал обычно проходит сквозь ионосферу вместо возвращения к Земле."),
+    ("radio-equipment", "Радиоэлектронное средство", "рэс|радиоаппаратура", "Техническое устройство, которое передаёт или принимает радиосигналы.", "Любительский трансивер с антенной образует радиостанцию и относится к РЭС."),
+    ("audio-amplifier", "УНЧ", "усилитель низкой частоты", "Каскад, усиливающий звуковой сигнал после детектора или перед громкоговорителем.", "УНЧ делает демодулированный звук достаточно мощным для наушников или динамика."),
+    ("emergency-communication", "Аварийная радиосвязь", "аварийная связь|сигнал бедствия", "Связь для передачи сообщений о непосредственной опасности и координации помощи.", "При бедствии приоритет имеет передача данных, необходимых для спасения людей."),
+    ("waveguide", "Волновод", "рупорная антенна|облучатель", "Полая металлическая линия, направляющая электромагнитную волну на СВЧ.", "Расширенный конец волновода образует рупор и согласует волну со свободным пространством."),
+    ("frequency-allocation", "Основа распределения частот", "первичная основа|вторичная основа", "Статус радиослужбы в распределении полосы, определяющий приоритет и защиту от помех.", "Вторичная служба не должна создавать вредных помех первичной службе."),
+    ("licensing", "Радиолюбительская квалификация и лицензирование", "национальная лицензия|квалификационная категория|национальный экзамен|класс a|администрация связи|разрешение|нерезидент|третья категория|четвертая категория", "Процедуры подтверждения знаний и получения национального права на работу любительской станции.", "Сертификат HAREC подтверждает экзамен, а национальная администрация оформляет свой документ."),
+    ("decibel", "Децибел", "дб|db", "Логарифмическая единица отношения мощностей или амплитуд.", "Рост мощности в два раза соответствует примерно 3 дБ."),
+    ("quality-factor", "Добротность", "q контура", "Мера отношения запасённой энергии к потерям в колебательной системе.", "Контур с большей добротностью имеет более узкую резонансную полосу."),
+    ("fading", "Замирание", "фединг", "Изменение уровня принятого сигнала из-за сложения волн, прошедших разными путями.", "Две ионосферные волны могут временно ослабить друг друга у приёмной антенны."),
+    ("meteor-scatter", "Метеорное рассеяние", "метеорная связь", "Кратковременное отражение УКВ от ионизированных следов метеоров.", "Короткие всплески прохождения позволяют обмениваться сообщениями на УКВ."),
+    ("propagation", "Распространение радиоволн", "прохождение радиоволн", "Путь радиосигнала от передающей антенны к приёмной через поверхность, тропосферу или ионосферу.", "Выбор диапазона зависит от расстояния, времени суток и состояния атмосферы."),
+    ("contest-exchange", "Соревновательный обмен", "соревнования|контрольный номер|круглый стол", "Краткий установленный набор данных, которым станции обмениваются в соревновании или организованной сети.", "После позывных участники передают рапорт и контрольный номер."),
+    ("radio-control", "Радиоуправление", "кодирование команд", "Передача команд удалённому устройству по радиоканалу.", "Кодированная команда может переключить модель или дистанционный объект."),
 ]
-
-TOPIC_PRIMERS = {
-    "Q-коды, аппаратный журнал и QSL": "В радиообмене важны краткость и однозначность: Q-коды заменяют типовые фразы, журнал фиксирует связь, а QSL подтверждает её.",
-    "Антенны и поляризация: углублённые вопросы": "Антенна не создаёт дополнительную энергию: она распределяет излучение по направлениям, а ориентация электрического поля задаёт поляризацию.",
-    "Антенны, фидеры, согласование и КСВ": "Передатчик, фидер и антенна образуют единый ВЧ-тракт. Несогласованный импеданс отражает часть мощности и повышает КСВ.",
-    "Виды излучения, модуляция и спектры": "Модуляция переносит информацию изменением несущей, а спектр показывает, из каких частотных составляющих состоит получившийся сигнал.",
-    "Измерения, мощности и проверка аппаратуры": "Измерительный прибор подключают в соответствии с измеряемой величиной и не превышают его допустимые пределы.",
-    "Источники питания, формы сигналов и измерения": "Форма сигнала видна во времени, а источник питания должен дать нужные напряжение и ток с допустимыми пульсациями.",
-    "Колебательные контуры, фильтры, генераторы, ФАПЧ и DSP": "Реактивные элементы выбирают частоты, генератор создаёт колебания, а обратная связь и ФАПЧ управляют их устойчивостью.",
-    "Международные правила, ITU, IARU и CEPT": "Международные нормы распределяют спектр и согласуют требования, а национальные правила реализуют их в конкретной стране.",
-    "Назначение узлов радиостанции": "Каждый узел тракта выполняет одну функцию: создаёт, усиливает, преобразует, фильтрует или извлекает сигнал.",
-    "Органы управления, передатчики и приёмники": "Органы управления меняют параметры тракта, но смысл регулировки определяется физической функцией соответствующего узла.",
-    "Полупроводники, усилители и операционные усилители": "Полупроводниковый прибор позволяет малому управляющему сигналу управлять большим током, а схема включения задаёт свойства каскада.",
-    "Проведение радиосвязи, рапорты и ретрансляторы": "Правильная связь начинается с прослушивания частоты, идентификации позывными и короткого обмена необходимой информацией.",
-    "Радиопомехи, побочные излучения и гармоники": "Нелинейность и недостаточная фильтрация создают лишние частоты; техническая исправность и корректная эксплуатация уменьшают помехи.",
-    "Распространение радиоволн": "Дальность зависит от частоты, антенн и среды: земная поверхность, тропосфера и ионосфера по-разному влияют на волну.",
-    "Российские правила, категории, позывные и разрешительные документы": "Экзаменационный ответ следует формулировке действующего банка; для реальной работы дополнительно проверяют актуальные нормативные документы.",
-    "Структуры приёмников и передатчиков": "Структурная схема читается слева направо по пути сигнала: источник, преобразование, фильтрация, усиление и выход.",
-    "Цепи постоянного и переменного тока, RLC и трансформаторы": "В постоянной цепи важны R и закон Ома, а на переменном токе конденсатор и катушка добавляют частотно-зависимую реактивность.",
-    "Электрические величины, частота, волна и мощность": "Единицы и формулы описывают разные свойства: U создаёт ток I через сопротивление R, а P показывает скорость передачи энергии.",
-    "Электро-, грозо- и пожарная безопасность": "Приоритет — убрать источник опасности, не подвергать себя риску и только затем оказывать помощь или устранять последствия.",
-}
-
-DEFAULT_TERMS = {
-    topic: ids for topic, ids in {
-        "Q-коды, аппаратный журнал и QSL": ["q-code", "log", "qsl"],
-        "Антенны и поляризация: углублённые вопросы": ["antenna", "polarization", "radiation-pattern"],
-        "Антенны, фидеры, согласование и КСВ": ["antenna", "feedline", "matching", "swr"],
-        "Виды излучения, модуляция и спектры": ["modulation", "carrier", "spectrum"],
-        "Измерения, мощности и проверка аппаратуры": ["multimeter", "power"],
-        "Источники питания, формы сигналов и измерения": ["voltage", "current", "oscilloscope"],
-        "Колебательные контуры, фильтры, генераторы, ФАПЧ и DSP": ["lc", "filter", "oscillator", "pll"],
-        "Международные правила, ITU, IARU и CEPT": ["itu", "iaru", "cept"],
-        "Назначение узлов радиостанции": ["amplifier-stage", "filter"],
-        "Органы управления, передатчики и приёмники": ["sensitivity", "selectivity"],
-        "Полупроводники, усилители и операционные усилители": ["transistor", "amplifier-stage"],
-        "Проведение радиосвязи, рапорты и ретрансляторы": ["callsign", "rst", "repeater"],
-        "Радиопомехи, побочные излучения и гармоники": ["interference", "spurious", "harmonics"],
-        "Распространение радиоволн": ["ionosphere", "sky-wave"],
-        "Российские правила, категории, позывные и разрешительные документы": ["callsign", "srr", "grfc"],
-        "Структуры приёмников и передатчиков": ["superheterodyne", "mixer", "if"],
-        "Цепи постоянного и переменного тока, RLC и трансформаторы": ["resistance", "reactance", "impedance"],
-        "Электрические величины, частота, волна и мощность": ["voltage", "current", "frequency", "power"],
-        "Электро-, грозо- и пожарная безопасность": ["electric-shock", "grounding", "fire-safety"],
-    }.items()
-}
 
 TEACHING_DIAGRAMS = {
     "transistor": "diagrams/teaching/transistor.png",
@@ -238,9 +214,86 @@ TEACHING_DIAGRAMS = {
     "filter": "diagrams/teaching/filters.png",
 }
 
+AUTHORED_PATH = ROOT / "ContentAuthored" / "second-category-405-explanations.json"
+AUTHORED_SHA256 = "bbbbb344bc8f770a135bb380b7e8bd341ee1d4986d17f4ac502f4fdfd07159f8"
+EXPECTED_NUMBERS = set(range(1, 39)) | set(range(47, 99)) | set(range(100, 375)) | set(range(387, 427))
+AUTHORED_FIELDS = {
+    "explanationShort", "explanationBeginner", "explanationReasoning",
+    "wrongOptionExplanationsByText", "memoryHint", "glossaryTerms",
+}
+
+# Explicit source-checked bindings for OCR/extraction artifacts. These are stable
+# option IDs, never displayed letters or shuffled positions.
+WRONG_OPTION_TEXT_BINDINGS = {
+    (23, "RL3DX"): "q-023-option-4",
+    (32, "Лицензию HAREC."): "q-032-option-4",
+    (426, "14 МГц."): "q-426-option-4",
+}
+
+# Four supplied records accidentally place the correct answer inside the
+# wrong-option dictionary and omit one real distractor. The immutable source is
+# preserved byte-for-byte; the exact authored short explanation is used for the
+# source-checked missing distractor because it directly states the distinction.
+WRONG_OPTION_AUTHORED_REPAIRS = {
+    96: "q-096-option-1",
+    123: "q-123-option-4",
+    188: "q-188-option-3",
+    214: "q-214-option-1",
+}
+
+GLOSSARY_TERM_BINDINGS = {
+    "90 дней": "cept", "CEPT Full": "harec", "CEPT T/R 61-01": "cept",
+    "OE": "callsign", "ON": "callsign", "RA/": "callsign", "RU/": "callsign",
+    "префикс": "callsign", "префикс страны": "callsign", "суффикс": "callsign",
+    "дробь": "callsign", "специальный позывной": "callsign",
+    "свидетельство об образовании позывного": "callsign",
+    "АГC": "agc", "Администрация связи": "licensing", "Конвенция ITU": "itu",
+    "Устав ITU": "itu", "Регион 1": "itu", "радиорегион": "itu",
+    "УПЧ": "if", "боковая полоса": "ssb", "волновое сопротивление": "impedance",
+    "вредная помеха": "interference", "двухтоновый генератор": "oscillator",
+    "диапазон": "frequency", "диапазон 2 м": "frequency", "код Морзе": "cw",
+    "кодирование": "radio-control", "линейность": "amplifier-stage",
+    "операционный усилитель": "amplifier-stage", "радиал": "counterpoise",
+    "параболическая антенна": "antenna", "рупорная антенна": "waveguide",
+    "облучатель": "waveguide", "соседний канал": "selectivity",
+    "стабилитрон": "diode", "туннельный диод": "diode",
+    "температурная инверсия": "troposphere", "транспондер": "repeater",
+    "любительская спутниковая служба": "satellite",
+    "аварийная связь": "emergency-communication",
+    "аварийная радиосвязь": "emergency-communication",
+    "сигнал бедствия": "emergency-communication",
+    "гармонизированный экзамен": "harec", "приложение 2": "cept",
+    "класс A": "licensing", "квалификационная категория": "licensing",
+    "национальная лицензия": "licensing", "национальный экзамен": "licensing",
+    "нерезидент": "licensing", "разрешение": "licensing",
+    "третья категория": "licensing", "четвёртая категория": "licensing",
+    "таможенные правила": "licensing", "командир судна": "licensing",
+    "бортовая радиостанция": "licensing", "управляющий оператор": "licensing",
+    "радиоаппаратура": "radio-equipment", "РЭС": "radio-equipment",
+    "материальная выгода": "amateur-service", "коммерческая связь": "amateur-service",
+    "обучение": "amateur-service", "самообучение": "amateur-service",
+    "технические исследования": "amateur-service", "круглый стол": "contest-exchange",
+    "соревнования": "contest-exchange", "контрольный номер": "contest-exchange",
+}
+
 
 def normalize(value: str) -> str:
-    return value.lower().replace("ё", "е").replace("–", "-").replace("—", "-")
+    value = unicodedata.normalize("NFKC", value).lower().replace("ё", "е")
+    value = value.translate(str.maketrans({
+        "“": '"', "”": '"', "«": '"', "»": '"', "„": '"',
+        "–": "-", "—": "-", "−": "-", "‐": "-", "‑": "-", "…": "...", " ": " ",
+    }))
+    # Join line-wrap hyphenation such as "No- vice" and "HA- REC".
+    value = re.sub(r"(?<=[a-zа-я])-\s+(?=[a-zа-я])", "", value)
+    value = re.sub(r"\s+", " ", value).strip()
+    return value.rstrip(" .;:!?")
+
+
+def from_zero(term: str, definition: str, example: str) -> str:
+    return (
+        f"Сначала представьте практическую ситуацию: {example} "
+        f"Именно в ней проявляется понятие «{term}»: {definition}"
+    )
 
 
 def glossary() -> list[dict]:
@@ -250,7 +303,7 @@ def glossary() -> list[dict]:
             "term": term,
             "aliases": aliases.split("|") if aliases else [],
             "shortDefinition": definition,
-            "fromZero": definition,
+            "fromZero": from_zero(term, definition, example),
             "radioExample": example,
             "relatedTerms": [],
             "diagramAsset": TEACHING_DIAGRAMS.get(item_id),
@@ -259,111 +312,127 @@ def glossary() -> list[dict]:
     ]
 
 
-def contains_alias(text: str, alias: str) -> bool:
-    candidate = normalize(alias)
-    haystack = normalize(text)
-    if len(candidate) <= 4 or candidate.isalpha():
-        return re.search(rf"(?<![a-zа-я0-9]){re.escape(candidate)}(?![a-zа-я0-9])", haystack) is not None
-    return candidate in haystack
+def load_authored() -> dict[str, dict]:
+    digest = hashlib.sha256(AUTHORED_PATH.read_bytes()).hexdigest()
+    if digest != AUTHORED_SHA256:
+        raise ValueError(f"authored content checksum mismatch: {digest}")
+    payload = json.loads(AUTHORED_PATH.read_text(encoding="utf-8"))
+    authored = payload.get("questions", {})
+    numbers = {int(number) for number in authored}
+    if numbers != EXPECTED_NUMBERS or len(authored) != 405:
+        raise ValueError(f"authored question coverage mismatch: {sorted(EXPECTED_NUMBERS ^ numbers)}")
+    for number, record in authored.items():
+        missing = AUTHORED_FIELDS - set(record)
+        if missing or any(not record[field] for field in AUTHORED_FIELDS - {"glossaryTerms"}):
+            raise ValueError(f"question {number}: incomplete authored record: {sorted(missing)}")
+        if len(record["wrongOptionExplanationsByText"]) != 3:
+            raise ValueError(f"question {number}: expected three authored wrong-option explanations")
+    return authored
 
 
-def matched_terms(question: dict, entries: list[dict]) -> list[dict]:
-    text = " ".join([
-        question["stem"], question.get("explanationShort", ""),
-        question.get("officialCorrectAnswerText", ""),
-        " ".join(option["text"] for option in question["options"]),
-    ])
-    found = []
+def glossary_index(entries: list[dict]) -> dict[str, str]:
+    index: dict[str, str] = {}
     for entry in entries:
-        names = [entry["term"], *entry.get("aliases", [])]
-        if any(contains_alias(text, value) for value in names):
-            found.append(entry)
-    if not found:
-        defaults = set(DEFAULT_TERMS.get(question["topic"], []))
-        found = [entry for entry in entries if entry["id"] in defaults]
-    return found[:8]
+        for label in [entry["term"], *entry.get("aliases", [])]:
+            key = normalize(label)
+            previous = index.get(key)
+            if previous is not None and previous != entry["id"]:
+                raise ValueError(f"ambiguous glossary label {label!r}: {previous}, {entry['id']}")
+            index[key] = entry["id"]
+    return index
 
 
-def question_goal(stem: str, topic: str) -> str:
-    cleaned = stem.strip().rstrip("?")
-    if cleaned.lower().startswith("на каком") or cleaned.lower().startswith("на какой"):
-        return f"Нужно узнать нужную схему или рисунок по её обязательным признакам: {cleaned.lower()}."
-    if cleaned.lower().startswith("как "):
-        return f"Нужно понять правильное действие или представление, а не запомнить букву ответа: {cleaned.lower()}."
-    if cleaned.lower().startswith("какой") or cleaned.lower().startswith("какая") or cleaned.lower().startswith("какие"):
-        return f"Нужно сравнить варианты и выбрать тот, который точно удовлетворяет условию: {cleaned.lower()}."
-    if cleaned.lower().startswith("что"):
-        return f"Нужно определить смысл или назначение понятия из вопроса: {cleaned.lower()}."
-    return f"Нужно связать формулировку с основным правилом темы «{topic}»: {cleaned}."
+def resolve_glossary_terms(labels: list[str], entries: list[dict], number: int) -> list[str]:
+    index = glossary_index(entries)
+    entry_ids = {entry["id"] for entry in entries}
+    resolved = []
+    for label in labels:
+        term_id = index.get(normalize(label)) or GLOSSARY_TERM_BINDINGS.get(label)
+        if term_id not in entry_ids:
+            raise ValueError(f"question {number}: unresolved glossary term {label!r}")
+        if term_id not in resolved:
+            resolved.append(term_id)
+    return resolved
 
 
-def option_explanation(option: dict, correct: str, source: str, topic: str, entries: list[dict]) -> str:
-    option_terms = [entry for entry in entries if any(contains_alias(option["text"], name) for name in [entry["term"], *entry.get("aliases", [])])]
-    if option_terms:
-        distinction = " ".join(f"{entry['term']} — {entry['shortDefinition']}" for entry in option_terms[:2])
-        return f"Вариант «{option['text']}» связан с другим смыслом. {distinction} Для условия этой задачи решающим является правило: {source} Поэтому выбирают «{correct}»."
-    numbers = re.findall(r"\d+(?:[.,]\d+)?(?:\s*[кмМГг]?Г?ц|\s*[ВАВтОм%°]+)?", option["text"])
-    if numbers:
-        return f"Число или предел «{option['text']}» не следует из условия. Проверка по правилу темы «{topic}» даёт: {source} Правильное значение или формулировка — «{correct}»."
-    return f"Формулировка «{option['text']}» описывает иное условие или неверно меняет ключевой признак. Здесь применяется правило: {source} Ему соответствует «{correct}»."
+def bind_wrong_options(question: dict, record: dict) -> dict[str, str]:
+    number = question["examNumber"]
+    wrong_options = [option for option in question["options"] if option["id"] != question["correctOptionId"]]
+    by_text: dict[str, list[dict]] = {}
+    for option in wrong_options:
+        by_text.setdefault(normalize(option["text"]), []).append(option)
+
+    bound: dict[str, str] = {}
+    unmatched_texts = []
+    for text, explanation in record["wrongOptionExplanationsByText"].items():
+        manual_id = WRONG_OPTION_TEXT_BINDINGS.get((number, text))
+        matches = [option for option in wrong_options if option["id"] == manual_id] if manual_id else by_text.get(normalize(text), [])
+        if len(matches) == 1:
+            option_id = matches[0]["id"]
+            if option_id in bound:
+                raise ValueError(f"question {number}: duplicate wrong-option binding for {option_id}")
+            bound[option_id] = explanation
+        else:
+            unmatched_texts.append(text)
+
+    repair_id = WRONG_OPTION_AUTHORED_REPAIRS.get(number)
+    if repair_id:
+        correct_text = next(option["text"] for option in question["options"] if option["id"] == question["correctOptionId"])
+        if len(unmatched_texts) != 1 or normalize(unmatched_texts[0]) != normalize(correct_text):
+            raise ValueError(f"question {number}: unexpected authored wrong-option keys {unmatched_texts}")
+        if repair_id not in {option["id"] for option in wrong_options}:
+            raise ValueError(f"question {number}: invalid source-checked repair target {repair_id}")
+        bound[repair_id] = record["explanationShort"]
+    elif unmatched_texts:
+        raise ValueError(f"question {number}: unmatched authored wrong-option text {unmatched_texts}")
+
+    expected = {option["id"] for option in wrong_options}
+    if set(bound) != expected:
+        missing = sorted(expected - set(bound))
+        extra = sorted(set(bound) - expected)
+        raise ValueError(f"question {number}: unresolved wrong-option mappings; missing={missing}, extra={extra}")
+    return bound
 
 
-def enrich(question: dict, entries: list[dict]) -> dict:
+def apply_authored(question: dict, record: dict, entries: list[dict]) -> dict:
     value = dict(question)
-    source = question["explanationShort"].strip()
-    correct = question["officialCorrectAnswerText"].strip()
-    terms = matched_terms(question, entries)
-    definitions = "\n".join(f"• {entry['term']}: {entry['shortDefinition']}" for entry in terms)
-    primer = TOPIC_PRIMERS.get(question["topic"], "Сначала выделите физический или процедурный признак, затем сравните с каждым вариантом.")
-    value["glossaryTerms"] = [entry["id"] for entry in terms]
-    value["explanationBeginner"] = (
-        f"Что здесь спрашивают\n{question_goal(question['stem'], question['topic'])}\n\n"
-        f"Слова, которые нужны для ответа\n{definitions}\n\n"
-        f"Основная идея\n{primer}\n\n"
-        f"Почему верен ответ\n{source} Поэтому ответ банка — «{correct}»."
-    )
-    value["explanationReasoning"] = (
-        f"1. Выделите проверяемый признак в формулировке: {question['stem'].strip()}\n"
-        f"2. Примените правило темы «{question['topic']}»: {source}\n"
-        f"3. Сравните правило со всеми вариантами. Только «{correct}» сохраняет нужный признак без подмены понятия, единицы или условия."
-    )
-    value["wrongOptionExplanations"] = {
-        option["id"]: option_explanation(option, correct, source, question["topic"], entries)
-        for option in question["options"] if option["id"] != question["correctOptionId"]
-    }
-    value["memoryHint"] = f"Опорная связь: {primer.split('.')[0]}. Ответ: {correct}."
-    if question["examNumber"] in FIGURE_PAGES:
-        value["figureAsset"] = f"diagrams/questions/q-{question['examNumber']:03d}.png"
+    for field in ("explanationShort", "explanationBeginner", "explanationReasoning", "memoryHint"):
+        value[field] = record[field]
+    value["wrongOptionExplanations"] = bind_wrong_options(value, record)
+    value["glossaryTerms"] = resolve_glossary_terms(record.get("glossaryTerms", []), entries, value["examNumber"])
+    value["useExamFigure"] = bool(record.get("useExamFigure", False))
+    value["sourceExtractionNote"] = record.get("sourceExtractionNote")
+    diagram_key = record.get("teachingDiagramKey")
+    if diagram_key:
+        asset = f"diagrams/teaching/{diagram_key}.png"
+        if not (ROOT / "Content" / asset).is_file():
+            raise ValueError(f"question {value['examNumber']}: missing teaching diagram {diagram_key}")
+        value["teachingDiagramAsset"] = asset
+    else:
+        value["teachingDiagramAsset"] = None
+    if value["examNumber"] in FIGURE_PAGES:
+        value["figureAsset"] = f"diagrams/questions/q-{value['examNumber']:03d}.png"
+    if value["useExamFigure"] and not value.get("figureAsset"):
+        raise ValueError(f"question {value['examNumber']}: requested exam figure is unresolved")
     return value
-
-
-def load_curated_questions() -> dict[str, dict]:
-    curated: dict[str, dict] = {}
-    for path in sorted((ROOT / "ContentOverrides").glob("questions-*.json")):
-        payload = json.loads(path.read_text(encoding="utf-8")).get("questions", {})
-        overlap = set(curated).intersection(payload)
-        if overlap:
-            raise ValueError(f"duplicate curated questions in {path}: {sorted(overlap)}")
-        curated.update(payload)
-    return curated
 
 
 def main() -> None:
     raw_path = ROOT / "ContentRaw" / "questions-imported.json"
-    if not raw_path.exists():
-        raw_path = ROOT / "Content" / "questions.json"
     raw = json.loads(raw_path.read_text(encoding="utf-8"))
     entries = glossary()
-    curated = load_curated_questions()
+    authored = load_authored()
     overrides_path = ROOT / "ContentOverrides" / "question-overrides.json"
     overrides = json.loads(overrides_path.read_text(encoding="utf-8")).get("questions", {}) if overrides_path.exists() else {}
 
     questions = []
     for question in raw:
-        value = enrich(question, entries)
-        value.update(curated.get(str(question["examNumber"]), {}))
         override = overrides.get(str(question["examNumber"]), {})
-        value.update({key: val for key, val in override.items() if key not in {"correctOptionIndex", "answerMatchNote"}})
+        value = dict(question)
+        for key in ("correctOptionId", "sourceReference", "legalHistoricalNote", "figureAsset"):
+            if key in override:
+                value[key] = override[key]
+        value = apply_authored(value, authored[str(question["examNumber"])], entries)
         questions.append(value)
 
     # Derive related-term links from co-occurrence in the current question bank.
@@ -385,7 +454,7 @@ def main() -> None:
     (content / "topics.json").write_text(json.dumps(topics, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     source_map = {q["id"]: q["sourceReference"] for q in questions}
     (content / "source-map.json").write_text(json.dumps(source_map, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(f"Built {len(questions)} enriched questions and {len(entries)} glossary entries")
+    print(f"Built {len(questions)} questions from 405 authored records and {len(entries)} glossary entries")
 
 
 if __name__ == "__main__":

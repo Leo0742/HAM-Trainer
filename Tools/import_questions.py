@@ -30,7 +30,8 @@ def compact(value: str) -> str:
 def normalized(value: str) -> str:
     value = compact(value).lower().replace("ё", "е")
     value = value.replace("–", "-").replace("—", "-").replace("…", "...")
-    return re.sub(r"[^a-zа-я0-9]+", "", value)
+    value = value.replace("≤", "<=").replace("≥", ">=")
+    return re.sub(r"[^a-zа-я0-9<>=]+", "", value)
 
 
 @dataclass
@@ -119,6 +120,11 @@ def parse_reference(raw: str) -> dict[int, ReferenceEntry]:
         for option_index, option_match in enumerate(option_matches):
             end = option_matches[option_index + 1].start() if option_index + 1 < len(option_matches) else len(block)
             options.append(strip_reference_noise(block[option_match.end():end]))
+        if number == 33 and len(options) == 3 and "dc Заочно" in options[1]:
+            headquarters, online = options[1].split("dc Заочно", 1)
+            # Preserve the existing stable option IDs while restoring the four
+            # source choices that PDF extraction had glued together.
+            options = [options[0], headquarters.strip(), options[2], f"Заочно{online}".strip()]
         result[number] = ReferenceEntry(
             number=number,
             stem=stem,
