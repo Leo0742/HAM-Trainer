@@ -107,8 +107,8 @@ private struct BuiltInTermRow: View {
     var body: some View {
         DisclosureGroup {
             VStack(alignment: .leading, spacing: 10) {
-                Text(entry.fromZero)
-                Label(entry.radioExample, systemImage: "radio").foregroundStyle(.secondary)
+                Text(entry.fromZero).font(.system(size: store.settings.readingSize.explanationFontSize))
+                Label(entry.radioExample, systemImage: "radio").font(.system(size: store.settings.readingSize.answerFontSize)).foregroundStyle(.secondary)
                 if !entry.relatedTerms.isEmpty {
                     Text("Связанные понятия: \(entry.relatedTerms.compactMap { id in store.glossary.first(where: { $0.id == id })?.term }.joined(separator: ", "))")
                         .font(.callout).foregroundStyle(.secondary)
@@ -128,7 +128,7 @@ private struct BuiltInTermRow: View {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(entry.term).font(.headline)
-                    Text(entry.shortDefinition).font(.callout).foregroundStyle(.secondary)
+                    Text(entry.shortDefinition).font(.system(size: store.settings.readingSize.metadataFontSize)).foregroundStyle(.secondary).lineLimit(2)
                 }
                 Spacer()
                 let progress = store.conceptProgressFor(entry.id)
@@ -151,7 +151,7 @@ private struct PersonalTermRow: View {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(entry.term).font(.headline)
-                    Text(entry.shortDefinition.isEmpty ? "Добавьте краткое определение" : entry.shortDefinition).font(.callout).foregroundStyle(.secondary)
+                    Text(entry.shortDefinition.isEmpty ? "Добавьте краткое определение" : entry.shortDefinition).font(.system(size: 14)).foregroundStyle(.secondary).lineLimit(2)
                 }
                 Spacer()
                 Image(systemName: "pencil").foregroundStyle(.secondary)
@@ -173,19 +173,19 @@ struct PersonalGlossaryEditor: View {
 
     var body: some View {
         Form {
-            TextField("Термин", text: $draft.term)
-            TextField("Краткое определение", text: $draft.shortDefinition)
-            TextField("Подробное объяснение", text: $draft.detailedExplanation, axis: .vertical).lineLimit(3...8)
-            TextField("Пример", text: $draft.example, axis: .vertical).lineLimit(2...5)
-            TextField("Личные заметки", text: $draft.personalNotes, axis: .vertical).lineLimit(2...8)
-            TextField("ID связанных вопросов через запятую", text: relatedIDs)
+            LabeledContent("Термин") { TextField("Название", text: $draft.term).frame(minWidth: 390) }
+            LabeledContent("Краткое определение") { TextField("Одной фразой", text: $draft.shortDefinition).frame(minWidth: 390) }
+            LabeledContent("Подробное объяснение") { TextField("Объясните своими словами", text: $draft.detailedExplanation, axis: .vertical).lineLimit(4...9).frame(minWidth: 390) }
+            LabeledContent("Пример") { TextField("Пример из радиопрактики", text: $draft.example, axis: .vertical).lineLimit(3...6).frame(minWidth: 390) }
+            LabeledContent("Личные заметки") { TextField("Что важно запомнить", text: $draft.personalNotes, axis: .vertical).lineLimit(3...8).frame(minWidth: 390) }
+            LabeledContent("Связанные вопросы") { TextField("Например: q-057, q-347", text: relatedIDs).frame(minWidth: 390) }
             HStack {
                 if !isNew { Button("Удалить", role: .destructive) { store.deletePersonalGlossaryEntry(id: draft.id); dismiss() } }
                 Spacer()
                 Button("Отмена") { dismiss() }
                 Button("Сохранить") { save() }.buttonStyle(.borderedProminent).disabled(draft.term.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
-        }.padding(22).frame(width: 560)
+        }.padding(28).frame(width: 680)
     }
 
     private var relatedIDs: Binding<String> {

@@ -158,43 +158,20 @@ struct WeakTopicsPanel: View {
     }
 }
 
-private enum WeakQuestionFilter: String, CaseIterable, Identifiable {
-    case all, recent, dontKnow, hard
-    var id: String { rawValue }
-    var title: String {
-        switch self {
-        case .all: "Все слабые"
-        case .recent: "Недавние ошибки"
-        case .dontKnow: "Не знаю"
-        case .hard: "Отмечены сложными"
-        }
-    }
-}
-
 struct WeakQuestionsView: View {
     @EnvironmentObject private var store: AppStore
     @State private var session: StudySession?
     @State private var filter: WeakQuestionFilter = .all
+    @State private var rounds = 1
     private var allWeak: [Question] {
         store.questions.filter { let progress = store.progressFor($0); return progress.state == .weak || progress.manuallyMarkedHard }
     }
     private var weak: [Question] {
-        allWeak.filter { question in
-            let progress = store.progressFor(question)
-            switch filter {
-            case .all: return true
-            case .recent:
-                guard let date = progress.lastFailureAt else { return false }
-                return date >= Date().addingTimeInterval(-7 * 24 * 60 * 60)
-            case .dontKnow: return progress.dontKnowCount > 0
-            case .hard: return progress.manuallyMarkedHard
-            }
-        }
+        store.questions.filter { filter.matches(store.progressFor($0)) }
     }
     var body: some View {
         Group {
             if let session { StudyRunnerView(session: session, onFinish: { self.session = nil }) }
-            else if allWeak.isEmpty { ContentUnavailableView("Слабых вопросов пока нет", systemImage: "checkmark.circle", description: Text("Они появятся после ошибок, «Не знаю» или ручной отметки.")) }
             else {
                 VStack(alignment: .leading, spacing: 20) {
                     Text("Слабые вопросы").font(.largeTitle.bold())
@@ -202,13 +179,32 @@ struct WeakQuestionsView: View {
                     Picker("Фильтр", selection: $filter) {
                         ForEach(WeakQuestionFilter.allCases) { Text($0.title).tag($0) }
                     }.pickerStyle(.segmented)
+                    HStack {
+                        Text("Круги")
+                        Picker("Круги", selection: $rounds) {
+                            ForEach([1, 3, 5], id: \.self) { Text("\($0)").tag($0) }
+                        }.pickerStyle(.segmented).labelsHidden().frame(width: 220)
+                        Text("Каждый вопрос появится один раз в каждом круге.").font(.callout).foregroundStyle(.secondary)
+                    }
                     if weak.isEmpty {
-                        ContentUnavailableView("В этом фильтре вопросов нет", systemImage: "line.3.horizontal.decrease.circle")
+                        ContentUnavailableView(
+                            allWeak.isEmpty && filter == .all ? "Слабых вопросов пока нет" : "В этом фильтре вопросов нет",
+                            systemImage: allWeak.isEmpty && filter == .all ? "checkmark.circle" : "line.3.horizontal.decrease.circle",
+                            description: Text(allWeak.isEmpty && filter == .all ? "Они появятся после ошибок, «Не знаю» или ручной отметки." : "Выберите другой фильтр или продолжите учёбу.")
+                        )
+                        .frame(maxWidth: 700)
+                        .frame(height: 220, alignment: .topLeading)
                     } else {
-                        Button("Тренировать \(weak.count) вопросов") { session = StudySession(questions: weak, drillWeak: true) }.buttonStyle(.borderedProminent)
+                        Button("Тренировать \(weak.count * rounds) карточек") {
+                            session = StudySession(
+                                intensiveQuestions: weak,
+                                rounds: rounds,
+                                randomizeOptions: store.settings.randomizeOptions
+                            )
+                        }.buttonStyle(.borderedProminent)
                         List(weak) { q in QuestionRow(question: q) }
                     }
-                }.padding(28)
+                }.padding(28).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
         }.navigationTitle("Слабые вопросы")
     }
@@ -227,7 +223,7 @@ struct TopicsView: View {
                     HStack {
                         VStack(alignment: .leading) { Text(topic).font(.headline); Text("\(questions.count) вопросов").font(.caption).foregroundStyle(.secondary) }
                         Spacer()
-                        Button("Учить") { session = StudySession(questions: questions) }.buttonStyle(.borderless)
+                        Button("Учить") { session = StudySession(questions: questions, randomizeOptions: store.settings.randomizeOptions) }.buttonStyle(.borderless)
                     }.padding(.vertical, 5)
                 }.navigationTitle("Темы")
             }
@@ -241,7 +237,10 @@ struct QuestionRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Text("№ \(question.examNumber)").font(.callout.monospacedDigit()).foregroundStyle(.secondary).frame(width: 52, alignment: .leading)
-            VStack(alignment: .leading, spacing: 4) { Text(question.stem).lineLimit(2); Text(question.topic).font(.caption).foregroundStyle(.secondary) }
+            VStack(alignment: .leading, spacing: 4) {
+                Text(question.stem).font(.system(size: store.settings.readingSize.metadataFontSize)).lineLimit(2)
+                Text(question.topic).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
             Spacer()
             Text(store.progressFor(question).state.title).font(.caption).padding(.horizontal, 8).padding(.vertical, 4).background(.quaternary, in: Capsule())
         }.padding(.vertical, 4)
@@ -303,6 +302,7 @@ struct QuestionBrowserView: View {
                 }.padding()
                 List(filtered, selection: $selected) { q in QuestionRow(question: q).tag(q) }
             }.navigationTitle("Все вопросы — \(filtered.count)")
+                .navigationSplitViewColumnWidth(min: 360, ideal: 440, max: 550)
         } detail: {
             if let selected { QuestionDetailView(question: selected) }
             else { ContentUnavailableView("Выберите вопрос", systemImage: "list.number") }
@@ -319,18 +319,19 @@ struct QuestionDetailView: View {
             VStack(alignment: .leading, spacing: 18) {
                 Text("Вопрос № \(question.examNumber)").font(.title2.bold())
                 Text(question.topic).font(.callout).foregroundStyle(.secondary)
-                Text(question.stem).font(.title3)
+                Text(question.stem).font(.system(size: store.settings.readingSize.questionFontSize, weight: .semibold))
                 FigureView(asset: question.figureAsset)
+                if question.teachingDiagramAsset != question.figureAsset { FigureView(asset: question.teachingDiagramAsset) }
                 ForEach(question.options) { option in
-                    HStack { Image(systemName: option.id == question.correctOptionId ? "checkmark.circle.fill" : "circle").foregroundStyle(option.id == question.correctOptionId ? .green : .secondary); Text(option.text) }
-                        .padding(10).frame(maxWidth: .infinity, alignment: .leading).background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
+                    HStack { Image(systemName: option.id == question.correctOptionId ? "checkmark.circle.fill" : "circle").foregroundStyle(option.id == question.correctOptionId ? .green : .secondary); Text(option.text).font(.system(size: store.settings.readingSize.answerFontSize)) }
+                        .padding(store.settings.readingSize.answerPadding).frame(maxWidth: .infinity, alignment: .leading).background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
                 }
                 ExplanationView(question: question)
                 DisclosureGroup("Личная заметка") {
                     QuestionNoteEditor(question: question)
                 }
                 SourceView(question: question)
-            }.padding(28).frame(maxWidth: 850, alignment: .leading)
+            }.padding(28).frame(maxWidth: store.settings.readingSize.contentMaxWidth, alignment: .leading)
         }.background(Color(nsColor: .windowBackgroundColor))
     }
 }
@@ -370,6 +371,9 @@ struct SettingsView: View {
             Section("Учёба") {
                 Picker("Длина сессии", selection: $store.settings.defaultSessionLength) { ForEach([10, 20, 30, 40], id: \.self) { Text("\($0)").tag($0) } }
                 Toggle("Перемешивать варианты ответов", isOn: $store.settings.randomizeOptions)
+                Picker("Размер текста", selection: $store.settings.readingSize) {
+                    ForEach(ReadingSize.allCases) { Text($0.rawValue).tag($0) }
+                }
                 Picker("Объяснение", selection: $store.settings.explanationStyle) { Text("Кратко").tag("Кратко"); Text("С нуля").tag("С нуля"); Text("Подробно").tag("Подробно") }
             }
             Section("Резервная копия") {

@@ -30,6 +30,9 @@ struct Question: Codable, Hashable, Identifiable, Sendable {
     let memoryHint: String
     let glossaryTerms: [String]
     let figureAsset: String?
+    var useExamFigure: Bool = false
+    var sourceExtractionNote: String?
+    var teachingDiagramAsset: String?
     let sourceReference: SourceReference
     let legalHistoricalNote: String?
 }
@@ -113,6 +116,31 @@ enum AttemptOutcome: String, Codable, Sendable {
 
 enum StudySelectionReason: String, Codable, CaseIterable, Sendable {
     case new, weak, due, lapse, maintenance, manuallySelected, sessionMistake
+}
+
+enum WeakQuestionFilter: String, CaseIterable, Identifiable, Sendable {
+    case all, recent, dontKnow, historicalErrors, hard
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .all: "Все слабые"
+        case .recent: "Недавние ошибки"
+        case .dontKnow: "Не знаю"
+        case .historicalErrors: "Были ошибки"
+        case .hard: "Отмечены сложными"
+        }
+    }
+
+    func matches(_ progress: QuestionProgress, now: Date = Date()) -> Bool {
+        switch self {
+        case .all: progress.state == .weak || progress.manuallyMarkedHard
+        case .recent:
+            progress.lastFailureAt.map { $0 >= now.addingTimeInterval(-7 * 24 * 60 * 60) } ?? false
+        case .dontKnow: progress.dontKnowCount > 0
+        case .historicalErrors: progress.incorrectCount > 0
+        case .hard: progress.manuallyMarkedHard
+        }
+    }
 }
 
 struct StudyCard: Identifiable, Hashable, Sendable {
@@ -268,10 +296,40 @@ extension MockExamScore: Codable {
     }
 }
 
-struct UserSettings: Codable, Hashable, Sendable {
+enum ReadingSize: String, Codable, CaseIterable, Identifiable, Sendable {
+    case regular = "Обычный"
+    case large = "Крупный"
+    case extraLarge = "Очень крупный"
+    var id: String { rawValue }
+}
+
+struct UserSettings: Hashable, Sendable {
     var defaultSessionLength = 20
     var randomizeOptions = true
     var explanationStyle = "С нуля"
+    var readingSize: ReadingSize = .large
+}
+
+extension UserSettings: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case defaultSessionLength, randomizeOptions, explanationStyle, readingSize
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        defaultSessionLength = try values.decodeIfPresent(Int.self, forKey: .defaultSessionLength) ?? 20
+        randomizeOptions = try values.decodeIfPresent(Bool.self, forKey: .randomizeOptions) ?? true
+        explanationStyle = try values.decodeIfPresent(String.self, forKey: .explanationStyle) ?? "С нуля"
+        readingSize = try values.decodeIfPresent(ReadingSize.self, forKey: .readingSize) ?? .large
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(defaultSessionLength, forKey: .defaultSessionLength)
+        try values.encode(randomizeOptions, forKey: .randomizeOptions)
+        try values.encode(explanationStyle, forKey: .explanationStyle)
+        try values.encode(readingSize, forKey: .readingSize)
+    }
 }
 
 struct ProgressBackup: Sendable {
