@@ -332,6 +332,7 @@ struct GlossaryCard: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack { Image(systemName: "character.book.closed.fill").foregroundStyle(.tint); Text(entry.term).font(.title.bold()); Spacer(); Button("Готово") { dismiss() } }
             Text(entry.shortDefinition).font(.title3)
+            FigureView(asset: entry.diagramAsset)
             Text(entry.fromZero)
             Label(entry.radioExample, systemImage: "radio").foregroundStyle(.secondary)
             TextField("Личная заметка", text: $note).textFieldStyle(.roundedBorder)

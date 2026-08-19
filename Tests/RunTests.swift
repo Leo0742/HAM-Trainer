@@ -396,6 +396,17 @@ struct CoreTestRunner {
             try expect(restarted.personalGlossary.isEmpty, "personal term was not deleted")
         }))
 
+        tests.append(("personal glossary rejects empty terms and invalid question IDs", {
+            let url = temporaryURL()
+            let store = AppStore(persistenceURL: url)
+            _ = store.addPersonalGlossaryEntry(term: "   ", relatedQuestionIDs: ["q-001"])
+            try expect(store.personalGlossary.isEmpty, "empty personal term was saved")
+            let entry = store.addPersonalGlossaryEntry(term: "  Балун  ", relatedQuestionIDs: ["q-001", "q-001"])
+            try expect(entry.term == "Балун" && entry.relatedQuestionIDs == ["q-001"], "personal glossary normalization failed")
+            let validated = AppStore.validatedQuestionIDs(["q-001", "missing", "q-001"], validQuestionIDs: ["q-001"])
+            try expect(validated == ["q-001"], "invalid related question ID survived validation")
+        }))
+
         tests.append(("backup round trip restores all user state", {
             let sourceURL = temporaryURL()
             let exportURL = temporaryURL("backup.json")
@@ -466,7 +477,7 @@ struct CoreTestRunner {
             try expect(glossary.count >= 100, "glossary is not comprehensive: \(glossary.count)")
         }))
 
-        tests.append(("all 405 explanations pass anti-template audit", {
+        tests.append(("runtime explanations are structurally complete", {
             let questions = try AppStore.decoder.decode([Question].self, from: Data(contentsOf: content.appendingPathComponent("questions.json")))
             let banned = [
                 "Если слова в формулировке незнакомы, откройте выделенные термины",
