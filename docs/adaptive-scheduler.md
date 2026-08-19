@@ -1,25 +1,27 @@
-# Adaptive scheduler
+# Question-distance scheduler
 
-`AdaptiveReviewScheduler` is deterministic for the same questions, progress, and current date. Randomization is limited to answer presentation and mock-exam sampling.
+`AdaptiveReviewScheduler` измеряет интервалы количеством завершённых карточек, а не календарным временем. Глобальный `studyStep` сохраняется в резервной копии схемы 2 и увеличивается ровно один раз после каждого оценённого ответа.
 
-## Long-term states
+## Лестница
 
-- **Unseen**: no attempt.
-- **Learning**: an initial or ordinary failure.
-- **Review**: a correct encounter awaiting spaced review.
-- **Weak**: explicit “Не знаю,” reveal-before-answer, a repeated lapse, or manual hard marking.
-- **Mastered**: at least four successful spaced reviews, an interval of at least 14 days, and no failure in the prior seven days.
+Дистанции: `5 → 10 → 20 → 40 → 80` других ответов. Если карточка отвечена на шаге 100 с дистанцией 5, она получает `nextDueStudyStep = 106`: сначала должны завершиться шаги 101–105, и лишь следующей карточкой может стать повторяемая.
 
-Intervals are `1, 3, 7, 14, 30, 60` days. A correct unseen answer starts at one day. Later successes advance one step. A failure increments lapse count, clears the correct streak, removes mastery, returns to one day, and records the failure time. A weak question returns to ordinary review after three consecutive successes, so an old mistake is not a permanent punishment.
+- первый правильный ответ назначает дистанцию 5;
+- каждый успешный созревший повтор продвигает на следующий уровень;
+- после успешного уровня 80 и четырёх созревших повторов карточка становится освоенной;
+- ошибка, «Не знаю» или показ ответа снимает освоение, увеличивает число срывов и возвращает дистанцию 5;
+- успешное восстановление проходит ту же лестницу, поэтому старая ошибка не остаётся вечным наказанием.
 
-“Не знаю” and `revealedBeforeAnswer` have separate counters and never count as correct. Both enter the weak state.
+Старые календарные поля декодируются только для миграции и больше не участвуют в выборе.
 
-## Same-session repeats
+## Smart Study
 
-`StudySession` inserts a failed question after `6 + examNumber mod 7` other positions, giving a predictable 6–12-question gap. It never inserts it on the next screen. Normal sessions allow at most two total appearances of the question. A correct repeated answer prevents another insertion. Drill Weak Questions relaxes the cap to four.
+Очередь строится только из допустимых карточек и хранит явную причину выбора: `lapse`, `weak`, `new`, `due` или `maintenance`. Приоритет — созревший срыв, созревший слабый вопрос, новый вопрос, обычный созревший повтор. Созревшие освоенные карточки могут занять не более примерно 10% выдачи. Не созревшие освоенные вопросы никогда не используются как заполнитель; если доступного материала нет, показывается честное пустое состояние.
 
-## Smart Study composition
+Внутри каждого приоритета действует тематическая балансировка. Запрошенный размер — верхний предел, а не разрешение нарушить срок повторения.
 
-The first pass targets roughly 50% due learning/review items, 40% unseen items, and at most 10% due mastered maintenance. Empty pools are filled from the others. Candidate ordering is deterministic by priority and exam number.
+## Повтор внутри сессии
 
-Priority combines due lateness, current state, lapses, topic weakness, and recent successful recovery. Every selection pass enforces a 40% per-topic ceiling where the available bank permits it. Mastered items only enter as due maintenance and therefore become rare quickly.
+После ошибки `StudySession` пытается вставить карточку после пяти других карточек (на шестую позицию). Если в короткой сессии невозможно обеспечить расстояние, повтор не добавляется. В обычном режиме вопрос показывается максимум дважды, в специальной тренировке слабых — максимум трижды. Правильный повтор не создаёт ещё одну копию.
+
+Итог сессии хранит попытки, ошибки, переходы состояний, причины выбора и непонятные понятия. Из итогового экрана можно перейти к ошибкам, слабым вопросам или следующей Smart Study сессии.

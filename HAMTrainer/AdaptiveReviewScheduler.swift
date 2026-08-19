@@ -1,141 +1,176 @@
 import Foundation
 
 struct AdaptiveReviewScheduler: Sendable {
-    static let intervals = [1, 3, 7, 14, 30, 60]
-    private let calendar = Calendar(identifier: .gregorian)
+    static let questionIntervals = [5, 10, 20, 40, 80]
+    static let minimumOtherQuestionGap = 5
 
-    func applying(_ outcome: AttemptOutcome, to old: QuestionProgress, at now: Date) -> QuestionProgress {
+    func applying(
+        _ outcome: AttemptOutcome,
+        to old: QuestionProgress,
+        completedStudyStep: Int,
+        selectionReason: StudySelectionReason? = nil,
+        at now: Date = Date()
+    ) -> QuestionProgress {
+        precondition(completedStudyStep > 0)
         var progress = old
         progress.attempts += 1
         progress.firstSeenAt = progress.firstSeenAt ?? now
         progress.lastSeenAt = now
+        progress.lastSeenStudyStep = completedStudyStep
         progress.lastOutcome = outcome
+        progress.lastSelectionReason = selectionReason
 
         switch outcome {
         case .correct:
             progress.correctCount += 1
             progress.consecutiveCorrect += 1
+            progress.successfulSpacedReviews += 1
+
             if old.state == .unseen {
-                progress.state = .review
-                progress.intervalDays = 1
+                progress.reviewStage = 0
             } else {
-                progress.successfulSpacedReviews += 1
-                let currentIndex = Self.intervals.lastIndex(where: { $0 <= max(1, old.intervalDays) }) ?? 0
-                progress.intervalDays = Self.intervals[min(currentIndex + 1, Self.intervals.count - 1)]
-                if old.state == .weak && progress.consecutiveCorrect >= 3 {
-                    progress.state = .review
-                } else if progress.successfulSpacedReviews >= 4,
-                          progress.intervalDays >= 14,
-                          !hasRecentFailure(progress, at: now) {
-                    progress.state = .mastered
-                } else if progress.state != .mastered {
-                    progress.state = .review
-                }
+                progress.reviewStage = min(old.reviewStage + 1, Self.questionIntervals.count - 1)
             }
-            progress.nextDueAt = calendar.date(byAdding: .day, value: progress.intervalDays, to: now)
+
+            let interval = Self.questionIntervals[progress.reviewStage]
+            progress.nextDueStudyStep = completedStudyStep + interval + 1
+
+            if progress.reviewStage == Self.questionIntervals.count - 1,
+               progress.successfulSpacedReviews >= 4 {
+                progress.state = .mastered
+            } else if old.state == .weak && progress.consecutiveCorrect < 2 {
+                progress.state = .weak
+            } else {
+                progress.state = .review
+            }
 
         case .incorrect, .dontKnow, .revealedBeforeAnswer:
             if outcome == .incorrect { progress.incorrectCount += 1 }
             if outcome == .dontKnow { progress.dontKnowCount += 1 }
             if outcome == .revealedBeforeAnswer { progress.revealedCount += 1 }
             progress.consecutiveCorrect = 0
-            progress.lapseCount += old.state == .unseen ? 0 : 1
+            if old.state != .unseen { progress.lapseCount += 1 }
             progress.lastFailureAt = now
-            progress.intervalDays = 1
-            progress.state = (outcome == .dontKnow || outcome == .revealedBeforeAnswer || progress.lapseCount >= 2) ? .weak : .learning
-            progress.nextDueAt = calendar.date(byAdding: .day, value: 1, to: now)
+            progress.reviewStage = 0
+            progress.nextDueStudyStep = completedStudyStep + Self.minimumOtherQuestionGap + 1
+            progress.state = outcome == .incorrect && old.state == .unseen ? .learning : .weak
         }
         return progress
     }
 
-    func priority(for progress: QuestionProgress, topicWeakness: Double, at now: Date) -> Double {
-        let due: Double
-        if let date = progress.nextDueAt {
-            due = max(0, now.timeIntervalSince(date) / 86_400) + (date <= now ? 4 : 0)
-        } else {
-            due = progress.state == .unseen ? 2 : 0
-        }
-        let stateWeight: Double = switch progress.state {
-        case .weak: 7
-        case .learning: 5
-        case .review: 3
-        case .unseen: 2
-        case .mastered: 0.2
-        }
-        let recencyRecovery = Double(progress.consecutiveCorrect) * 0.8
-        return stateWeight + due + Double(progress.lapseCount) * 0.7 + topicWeakness * 2 - recencyRecovery
+    func isDue(_ progress: QuestionProgress, completedStudyStep: Int) -> Bool {
+        guard progress.state != .unseen, let due = progress.nextDueStudyStep else { return false }
+        return completedStudyStep + 1 >= due
     }
 
-    func smartQueue(questions: [Question], progress: [String: QuestionProgress], length: Int, at now: Date) -> [Question] {
-        let length = max(1, min(length, questions.count))
-        let topicWeakness = weaknessByTopic(questions: questions, progress: progress)
-        let getProgress = { (q: Question) in progress[q.id] ?? QuestionProgress(questionId: q.id) }
-        let due = questions.filter {
-            let p = getProgress($0)
-            return p.state != .unseen && p.state != .mastered && (p.nextDueAt ?? .distantPast) <= now
-        }.sorted { a, b in
-            let ap = priority(for: getProgress(a), topicWeakness: topicWeakness[a.topic, default: 0], at: now)
-            let bp = priority(for: getProgress(b), topicWeakness: topicWeakness[b.topic, default: 0], at: now)
-            return ap == bp ? a.examNumber < b.examNumber : ap > bp
-        }
-        let unseen = questions.filter { getProgress($0).state == .unseen }.sorted { $0.examNumber < $1.examNumber }
-        let maintenance = questions.filter {
-            let p = getProgress($0)
-            return p.state == .mastered && (p.nextDueAt ?? .distantFuture) <= now
-        }.sorted { $0.examNumber < $1.examNumber }
+    func remainingQuestionDistance(_ progress: QuestionProgress, completedStudyStep: Int) -> Int? {
+        guard let due = progress.nextDueStudyStep else { return nil }
+        return max(0, due - (completedStudyStep + 1))
+    }
 
-        var result: [Question] = []
-        let dueTarget = min(due.count, Int(ceil(Double(length) * 0.5)))
-        let unseenTarget = min(unseen.count, Int(ceil(Double(length) * 0.4)))
-        appendBalanced(from: Array(due.prefix(dueTarget)), to: &result, limit: length)
-        appendBalanced(from: Array(unseen.prefix(unseenTarget)), to: &result, limit: length)
-        appendBalanced(from: Array(maintenance.prefix(max(1, length / 10))), to: &result, limit: length)
-        appendBalanced(from: due + unseen + maintenance + questions.sorted { $0.examNumber < $1.examNumber }, to: &result, limit: length)
+    func selectionReason(for progress: QuestionProgress, completedStudyStep: Int) -> StudySelectionReason? {
+        if progress.state == .unseen { return .new }
+        guard isDue(progress, completedStudyStep: completedStudyStep) else { return nil }
+        if progress.state == .mastered { return .maintenance }
+        if progress.lapseCount > 0 && progress.lastOutcome?.isFailure == true { return .lapse }
+        if progress.state == .weak || progress.state == .learning { return .weak }
+        return .due
+    }
+
+    func smartQueue(
+        questions: [Question],
+        progress: [String: QuestionProgress],
+        length: Int,
+        completedStudyStep: Int
+    ) -> [StudyCard] {
+        let requested = max(1, min(length, questions.count))
+        let getProgress = { (question: Question) in
+            progress[question.id] ?? QuestionProgress(questionId: question.id)
+        }
+        let classified = questions.compactMap { question -> StudyCard? in
+            guard let reason = selectionReason(for: getProgress(question), completedStudyStep: completedStudyStep) else { return nil }
+            return StudyCard(question: question, reason: reason)
+        }
+
+        let orderedReasons: [StudySelectionReason] = [.lapse, .weak, .new, .due]
+        var result: [StudyCard] = []
+        for reason in orderedReasons {
+            let candidates = classified.filter { $0.reason == reason }.sorted {
+                priority($0, progress: getProgress($0.question), completedStudyStep: completedStudyStep) >
+                priority($1, progress: getProgress($1.question), completedStudyStep: completedStudyStep)
+            }
+            appendBalanced(from: candidates, to: &result, limit: requested)
+        }
+
+        let maintenanceLimit = min(max(1, requested / 10), requested - result.count)
+        if maintenanceLimit > 0 {
+            let maintenance = classified.filter { $0.reason == .maintenance }.sorted {
+                let left = getProgress($0.question).nextDueStudyStep ?? .max
+                let right = getProgress($1.question).nextDueStudyStep ?? .max
+                return left == right ? $0.question.examNumber < $1.question.examNumber : left < right
+            }
+            appendBalanced(from: Array(maintenance.prefix(maintenanceLimit)), to: &result, limit: requested)
+        }
         return result
     }
 
-    private func appendBalanced(from candidates: [Question], to result: inout [Question], limit: Int) {
+    private func priority(_ card: StudyCard, progress: QuestionProgress, completedStudyStep: Int) -> Double {
+        let overdue = Double(max(0, completedStudyStep + 1 - (progress.nextDueStudyStep ?? completedStudyStep + 1)))
+        let reasonWeight: Double = switch card.reason {
+        case .lapse: 600
+        case .weak: 500
+        case .new: 400
+        case .due: 300
+        case .maintenance: 100
+        case .manuallySelected, .sessionMistake: 0
+        }
+        return reasonWeight + overdue + Double(progress.lapseCount) * 0.1 - Double(card.question.examNumber) / 10_000
+    }
+
+    private func appendBalanced(from candidates: [StudyCard], to result: inout [StudyCard], limit: Int) {
+        guard result.count < limit else { return }
         let maxPerTopic = max(1, Int(ceil(Double(limit) * 0.4)))
-        for question in candidates where result.count < limit && !result.contains(where: { $0.id == question.id }) {
-            let count = result.count(where: { $0.topic == question.topic })
-            if count < maxPerTopic { result.append(question) }
+        var deferred: [StudyCard] = []
+        for card in candidates where result.count < limit && !result.contains(where: { $0.id == card.id }) {
+            if result.count(where: { $0.question.topic == card.question.topic }) < maxPerTopic {
+                result.append(card)
+            } else {
+                deferred.append(card)
+            }
         }
-    }
-
-    private func weaknessByTopic(questions: [Question], progress: [String: QuestionProgress]) -> [String: Double] {
-        Dictionary(grouping: questions, by: \.topic).mapValues { values in
-            let states = values.compactMap { progress[$0.id] }
-            guard !states.isEmpty else { return 0 }
-            return Double(states.count(where: { $0.state == .weak || $0.state == .learning })) / Double(states.count)
+        for card in deferred where result.count < limit && !result.contains(where: { $0.id == card.id }) {
+            result.append(card)
         }
-    }
-
-    private func hasRecentFailure(_ progress: QuestionProgress, at now: Date) -> Bool {
-        guard let failure = progress.lastFailureAt else { return false }
-        return now.timeIntervalSince(failure) < 7 * 86_400
     }
 }
 
 struct StudySession: Sendable {
-    private(set) var queue: [Question]
+    private(set) var queue: [StudyCard]
     private(set) var index = 0
     private(set) var appearanceCounts: [String: Int] = [:]
     private(set) var summary = SessionSummary()
     let drillWeak: Bool
 
-    init(questions: [Question], drillWeak: Bool = false) {
-        self.queue = questions
+    init(cards: [StudyCard], drillWeak: Bool = false) {
+        queue = cards
         self.drillWeak = drillWeak
     }
 
-    var current: Question? { index < queue.count ? queue[index] : nil }
+    init(questions: [Question], reason: StudySelectionReason = .manuallySelected, drillWeak: Bool = false) {
+        self.init(cards: questions.map { StudyCard(question: $0, reason: reason) }, drillWeak: drillWeak)
+    }
+
+    var current: StudyCard? { index < queue.count ? queue[index] : nil }
+    var currentQuestion: Question? { current?.question }
     var isComplete: Bool { index >= queue.count }
     var position: Int { min(index + 1, queue.count) }
 
-    mutating func record(_ outcome: AttemptOutcome) {
-        guard let question = current else { return }
+    mutating func record(_ outcome: AttemptOutcome, previousState: LearningState, newState: LearningState) {
+        guard let card = current else { return }
+        let question = card.question
         let count = appearanceCounts[question.id, default: 0] + 1
         appearanceCounts[question.id] = count
+        summary.attempts.append(SessionAttempt(questionId: question.id, outcome: outcome, previousState: previousState, newState: newState))
         summary.total += 1
         switch outcome {
         case .correct: summary.correct += 1
@@ -143,23 +178,64 @@ struct StudySession: Sendable {
         case .dontKnow: summary.dontKnow += 1
         case .revealedBeforeAnswer: summary.revealed += 1
         }
-        if outcome != .correct {
+        if previousState != .weak && newState == .weak { summary.becameWeak += 1 }
+        if (previousState == .weak || previousState == .learning) && newState == .review { summary.improved += 1 }
+        if previousState != .mastered && newState == .mastered { summary.mastered += 1 }
+
+        if outcome.isFailure {
             summary.topics[question.topic, default: 0] += 1
-            let limit = drillWeak ? 4 : 2
-            if count < limit {
-                let gap = 6 + (question.examNumber % 7)
-                let insertion = min(queue.count, index + gap + 1)
-                queue.insert(question, at: insertion)
+            let appearanceLimit = drillWeak ? 3 : 2
+            let insertion = index + AdaptiveReviewScheduler.minimumOtherQuestionGap + 1
+            if count < appearanceLimit, insertion <= queue.count {
+                queue.insert(StudyCard(question: question, reason: .sessionMistake), at: insertion)
             }
         }
     }
 
+    mutating func record(_ outcome: AttemptOutcome) {
+        record(outcome, previousState: .unseen, newState: outcome == .correct ? .review : .weak)
+    }
+
     mutating func advance() { index += 1 }
+
+    mutating func markConceptUnclear(_ id: String) {
+        if !summary.unclearConceptIDs.contains(id) { summary.unclearConceptIDs.append(id) }
+    }
+}
+
+struct MockExamResult: Sendable {
+    let correctQuestionIDs: [String]
+    let incorrectQuestionIDs: [String]
+    let unansweredQuestionIDs: [String]
+    var correct: Int { correctQuestionIDs.count }
+    var answered: Int { correctQuestionIDs.count + incorrectQuestionIDs.count }
 }
 
 struct MockExamBuilder: Sendable {
     static let questionCount = 30
     static let passingScore = 25
-    func makeExam(from questions: [Question]) -> [Question] { Array(questions.shuffled().prefix(Self.questionCount)) }
+
+    func makeExam(from questions: [Question]) -> [Question] {
+        Array(questions.shuffled().prefix(Self.questionCount))
+    }
+
+    func grade(questions: [Question], answers: [String: String]) -> MockExamResult {
+        var correct: [String] = []
+        var incorrect: [String] = []
+        var unanswered: [String] = []
+        for question in questions {
+            guard let answer = answers[question.id] else {
+                unanswered.append(question.id)
+                continue
+            }
+            if answer == question.correctOptionId {
+                correct.append(question.id)
+            } else {
+                incorrect.append(question.id)
+            }
+        }
+        return MockExamResult(correctQuestionIDs: correct, incorrectQuestionIDs: incorrect, unansweredQuestionIDs: unanswered)
+    }
+
     func passed(correct: Int) -> Bool { correct >= Self.passingScore }
 }

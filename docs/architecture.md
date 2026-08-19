@@ -5,7 +5,7 @@ HAM Trainer is a native SwiftUI macOS application. It is fully local and has no 
 ## Boundaries
 
 - `Content/` is immutable study material bundled with the application.
-- `QuestionProgress` and `ProgressBackup` are mutable user data stored in Application Support.
+- `QuestionProgress`, concept state, personal glossary entries, mock history, settings, and `ProgressBackup` are mutable user data stored in Application Support.
 - `AdaptiveReviewScheduler` contains deterministic scheduling and queue composition.
 - `StudySession` owns same-session delayed reinsertion and summary counts.
 - `AppStore` is the main-actor persistence boundary and autosaves each mutation atomically.
@@ -17,13 +17,13 @@ The separation means a content update can replace or correct questions without r
 
 `SmartStudyView` asks the scheduler for a balanced queue. `StudyRunnerView` records an attempt, updates long-term scheduling through `AppStore`, and tells `StudySession` whether to add a delayed repeat. Answer order is randomized only at presentation time.
 
-`MockExamView` samples 30 unique questions uniformly from the complete bank, suppresses explanations until completion, applies the 25/30 threshold, and records failed questions into adaptive progress.
+`MockExamView` samples 30 unique questions uniformly from the complete bank, suppresses explanations until completion, applies the 25/30 threshold, and records only submitted answers into adaptive progress. Incorrect and unanswered counts remain distinct.
 
-`QuestionBrowserView` performs in-memory local search across numbers, stems, options, topics, and explanations. The bank is small enough that indexing would add complexity without measurable benefit.
+`QuestionBrowserView` performs in-memory local search across numbers, stems, options, topics, explanations, glossary entries, and personal notes. The bank is small enough that indexing would add complexity without measurable benefit.
 
 ## Persistence
 
-`ProgressBackup` currently has schema version 1. Dates use ISO 8601. Writes use `Data.write(..., .atomic)`. The source content is never mutated. Export and import use native save/open panels. Future migrations should decode the prior version, transform in memory, and write the current schema only after a successful conversion.
+`ProgressBackup` has schema version 2 and persists global `studyStep`, question progress, concept progress, personal glossary, settings, and mock history. Dates use ISO 8601. Writes use `Data.write(..., .atomic)`. Import is decoded and validated fully before any current state changes. Version 1 calendar progress migrates conservatively into the question-distance model; legacy due dates are never used for future selection.
 
 ## Privacy and platform
 
