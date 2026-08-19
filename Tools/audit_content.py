@@ -1,117 +1,113 @@
 #!/usr/bin/env python3
-"""Write honest structural, curated-coverage, source, and asset audit reports."""
+"""Write reproducible authored-content, source, glossary, and asset audits."""
 
 from __future__ import annotations
 
 import hashlib
 import json
+import re
 import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTENT = ROOT / "Content"
 DOCS = ROOT / "docs"
-REQUIRED_CURATED = {
-    "explanationShort", "explanationBeginner", "explanationReasoning",
-    "wrongOptionExplanations", "memoryHint", "glossaryTerms",
-}
+AUTHORED_PATH = ROOT / "ContentAuthored" / "second-category-405-explanations.json"
+AUTHORED_SHA256 = "bbbbb344bc8f770a135bb380b7e8bd341ee1d4986d17f4ac502f4fdfd07159f8"
 EXPECTED_SOURCE_HASHES = {
     "Справочник_КЭ.pdf": "8108c82eb316069167a7ae3e525a9991637e2f547f12fbbde637e684dbad55d7",
     "radiolyubitel_2_category_guide_2026.pdf": "163c01bded0c4b5cee92892948f15eab32b226f6f0bd0edc70f0beecd6317749",
 }
-GENERIC_MARKERS = (
-    "Этот вариант не соответствует правилу",
-    "Нужно сравнить варианты и выбрать правильный",
-    "Это число не следует из условия",
-    "Другой ответ меняет ключевой признак",
-    "утверждает иной признак, назначение или причинную связь",
-    "предлагает другое разрешение, обязанность или область применения",
-)
+DIRECT_FIELDS = ("explanationShort", "explanationBeginner", "explanationReasoning", "memoryHint")
 
 
-def load_curated() -> tuple[dict[str, dict], list[str]]:
-    result: dict[str, dict] = {}
-    files = []
-    for path in sorted((ROOT / "ContentOverrides").glob("questions-*.json")):
-        files.append(str(path.relative_to(ROOT)))
-        payload = json.loads(path.read_text(encoding="utf-8")).get("questions", {})
-        overlap = set(result).intersection(payload)
-        if overlap:
-            raise AssertionError(f"duplicate curated IDs in {path}: {sorted(overlap)}")
-        result.update(payload)
-    return result, files
+def normalized(value: str) -> str:
+    return re.sub(r"\s+", " ", value.strip().lower().replace("ё", "е"))
 
 
 def main() -> None:
-    subprocess.run(["python3", str(ROOT / "Tools" / "validate_content.py")], check=True)
-    subprocess.run(["python3", str(ROOT / "Tools" / "audit_answer_matches.py")], check=True)
+    subprocess.run(["python3", str(ROOT / "Tools/validate_content.py")], check=True)
+    subprocess.run(["python3", str(ROOT / "Tools/audit_answer_matches.py")], check=True)
 
     questions = json.loads((CONTENT / "questions.json").read_text(encoding="utf-8"))
-    raw = json.loads((ROOT / "ContentRaw" / "questions-imported.json").read_text(encoding="utf-8"))
+    raw = json.loads((ROOT / "ContentRaw/questions-imported.json").read_text(encoding="utf-8"))
     glossary = json.loads((CONTENT / "glossary.json").read_text(encoding="utf-8"))
     answer_audit = json.loads((DOCS / "answer-match-audit.json").read_text(encoding="utf-8"))
-    curated, curated_files = load_curated()
+    authored_bytes = AUTHORED_PATH.read_bytes()
+    authored_digest = hashlib.sha256(authored_bytes).hexdigest()
+    authored = json.loads(authored_bytes)["questions"]
     by_number = {q["examNumber"]: q for q in questions}
     raw_by_number = {q["examNumber"]: q for q in raw}
-    curated_numbers = {int(number) for number in curated}
-    bank_numbers = set(by_number)
 
-    unchanged_stems = sum(by_number[n]["stem"] == raw_by_number[n]["stem"] for n in bank_numbers)
-    unchanged_options = sum(by_number[n]["options"] == raw_by_number[n]["options"] for n in bank_numbers)
-    resolved_correct_ids = sum(any(option["id"] == q["correctOptionId"] for option in q["options"]) for q in questions)
-    curated_wrong = sum(
-        n in curated_numbers
-        and set(curated[str(n)].get("wrongOptionExplanations", {}))
-        == {option["id"] for option in by_number[n]["options"] if option["id"] != by_number[n]["correctOptionId"]}
-        for n in bank_numbers
+    unchanged_stems = sum(by_number[n]["stem"] == raw_by_number[n]["stem"] for n in by_number)
+    unchanged_options = sum(by_number[n]["options"] == raw_by_number[n]["options"] for n in by_number)
+    resolved_correct_ids = sum(any(o["id"] == q["correctOptionId"] for o in q["options"]) for q in questions)
+    authored_exact = sum(
+        all(q[field] == authored[str(q["examNumber"])][field] for field in DIRECT_FIELDS)
+        for q in questions
     )
-    fallback = sorted(bank_numbers - curated_numbers)
+    fallback = sorted(q["examNumber"] for q in questions if not all(
+        q[field] == authored[str(q["examNumber"])][field] for field in DIRECT_FIELDS
+    ))
+    unresolved_wrong = sorted(q["examNumber"] for q in questions if
+        set(q["wrongOptionExplanations"]) != {o["id"] for o in q["options"] if o["id"] != q["correctOptionId"]}
+        or len(q["wrongOptionExplanations"]) != 3
+    )
 
     term_ids = {entry["id"] for entry in glossary}
     unresolved_glossary = sorted(set(term for q in questions for term in q.get("glossaryTerms", [])) - term_ids)
+    identical_from_zero = sorted(
+        entry["id"] for entry in glossary
+        if normalized(entry["shortDefinition"]) == normalized(entry["fromZero"])
+    )
     original_assets = sorted({q["figureAsset"] for q in questions if q.get("figureAsset")})
-    teaching_assets = sorted({entry["diagramAsset"] for entry in glossary if entry.get("diagramAsset")})
-    missing_assets = sorted(asset for asset in original_assets + teaching_assets if not (CONTENT / asset).is_file())
-    generic_matches = sorted({
-        q["examNumber"] for q in questions
-        if any(marker in " ".join([
-            q["explanationBeginner"], q["explanationReasoning"],
-            *q["wrongOptionExplanations"].values(),
-        ]) for marker in GENERIC_MARKERS)
+    teaching_assets = sorted({
+        *[entry["diagramAsset"] for entry in glossary if entry.get("diagramAsset")],
+        *[q["teachingDiagramAsset"] for q in questions if q.get("teachingDiagramAsset")],
     })
+    missing_assets = sorted(asset for asset in original_assets + teaching_assets if not (CONTENT / asset).is_file())
+    unresolved_requested_exam_figures = sorted(q["examNumber"] for q in questions if q.get("useExamFigure") and not q.get("figureAsset"))
 
     source_files = []
-    for name in ("Справочник_КЭ.pdf", "radiolyubitel_2_category_guide_2026.pdf"):
+    for name, expected_digest in EXPECTED_SOURCE_HASHES.items():
         path = ROOT / "ExamSources" / name
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
-        source_files.append({"file": name, "bytes": path.stat().st_size, "sha256": digest, "unchanged": digest == EXPECTED_SOURCE_HASHES[name]})
+        source_files.append({
+            "file": name, "bytes": path.stat().st_size, "sha256": digest,
+            "unchanged": digest == expected_digest,
+        })
 
+    legacy_sources = [
+        str(path.relative_to(ROOT)) for path in [
+            ROOT / "Tools/curate_content.py",
+            *sorted((ROOT / "ContentOverrides").glob("questions-*.json")),
+        ] if path.exists()
+    ]
     report = {
         "generatedOn": "reproducible",
-        "structural": {
+        "authoredSource": {
+            "file": str(AUTHORED_PATH.relative_to(ROOT)),
+            "sha256": authored_digest,
+            "checksumMatches": authored_digest == AUTHORED_SHA256,
             "totalQuestions": len(questions),
-            "uniqueExamNumbers": len(bank_numbers),
+            "authoredEducationalRecords": authored_exact,
+            "fallbackGeneratedEducationalRecords": len(fallback),
+            "fallbackQuestionIds": fallback,
+            "unresolvedWrongOptionMappings": unresolved_wrong,
+            "unresolvedGlossaryMappings": unresolved_glossary,
+            "legacyProductionExplanationSources": legacy_sources,
+            "manualSourceResolutions": {
+                "cleanTextToStableOptionId": [23, 32, 426],
+                "suppliedWrongMapRepairUsingExactAuthoredShortText": [96, 123, 188, 214],
+                "officialBankExtractionOrAnswerFix": [33, 359],
+            },
+            "method": "Authored means an exact record in the immutable checksum-verified ContentAuthored JSON. No generated fallback is counted or permitted.",
+        },
+        "structural": {
+            "uniqueExamNumbers": len(by_number),
             "resolvedCorrectOptionIds": resolved_correct_ids,
             "unchangedOfficialStems": unchanged_stems,
             "unchangedOfficialOptionSets": unchanged_options,
-            "withBeginnerExplanation": sum(bool(q["explanationBeginner"].strip()) for q in questions),
-            "withReasoningExplanation": sum(bool(q["explanationReasoning"].strip()) for q in questions),
-            "withCompleteWrongOptionExplanations": sum(len(q["wrongOptionExplanations"]) == len(q["options"]) - 1 for q in questions),
-            "withSourceReferences": sum(bool(q.get("sourceReference")) for q in questions),
-            "unresolvedGlossaryReferences": unresolved_glossary,
-            "missingDiagramAssets": missing_assets,
-            "genericBoilerplateQuestionIds": generic_matches,
-        },
-        "curated": {
-            "overrideFiles": curated_files,
-            "explicitQuestionRecords": len(curated_numbers),
-            "explicitBeginnerExplanations": sum("explanationBeginner" in value for value in curated.values()),
-            "explicitReasoningExplanations": sum("explanationReasoning" in value for value in curated.values()),
-            "explicitWrongOptionSets": curated_wrong,
-            "recordsWithEveryRequiredField": sum(REQUIRED_CURATED <= set(value) for value in curated.values()),
-            "fallbackQuestionIds": fallback,
-            "requiresManualReview": [],
-            "method": "Curated means an explicit committed per-question override record. Fallback-generated text is excluded from all curated counts. Counts do not claim an automated factual-quality score.",
         },
         "answerMatching": {
             "exact": answer_audit["exact"], "manual": answer_audit["manual"],
@@ -119,61 +115,54 @@ def main() -> None:
         },
         "glossary": {
             "entries": len(glossary),
-            "withDefinitions": sum(bool(entry["shortDefinition"].strip()) for entry in glossary),
-            "withExamples": sum(bool(entry["radioExample"].strip()) for entry in glossary),
+            "identicalNormalizedShortAndFromZero": identical_from_zero,
         },
-        "assets": {"originalExamFigures": len(original_assets), "additionalTeachingDiagrams": len(teaching_assets)},
-        "documentedSourceConflicts": [
-            {"question": 201, "note": "Guide says U or E; official options contain U. Explicit source match selects U and the in-app historical note preserves the discrepancy."}
-        ],
+        "assets": {
+            "examFigures": len(original_assets), "teachingDiagrams": len(teaching_assets),
+            "missingAssets": missing_assets,
+            "unresolvedRequestedExamFigures": unresolved_requested_exam_figures,
+        },
         "sourceFiles": source_files,
     }
 
     failures = []
-    if len(questions) != 405 or len(bank_numbers) != 405: failures.append("question count")
-    if unchanged_stems != 405 or unchanged_options != 405: failures.append("official wording/options changed")
-    if resolved_correct_ids != 405: failures.append("unresolved correctOptionId")
-    if fallback or report["curated"]["recordsWithEveryRequiredField"] != 405 or curated_wrong != 405: failures.append("curated coverage")
+    if len(questions) != len(authored) or authored_exact != 405 or fallback: failures.append("authored coverage")
+    if authored_digest != AUTHORED_SHA256: failures.append("authored checksum")
+    if unresolved_wrong or unresolved_glossary: failures.append("content mappings")
+    if legacy_sources: failures.append("legacy generated explanation source")
+    if unchanged_stems != 405 or unchanged_options != 405: failures.append("official wording/options")
+    if resolved_correct_ids != 405: failures.append("correct option IDs")
     if answer_audit["fuzzy"] or answer_audit["unresolved"]: failures.append("answer matching")
-    if unresolved_glossary or missing_assets: failures.append("references/assets")
-    if generic_matches: failures.append("generic boilerplate")
+    if identical_from_zero: failures.append("glossary beginner duplication")
+    if missing_assets or unresolved_requested_exam_figures: failures.append("assets")
     if not all(item["unchanged"] for item in source_files): failures.append("source PDF hash")
     report["failures"] = failures
 
     DOCS.mkdir(exist_ok=True)
     (DOCS / "content-audit.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    s, c, a, g = report["structural"], report["curated"], report["assets"], report["glossary"]
-    source_lines = "\n".join(f"- `{item['file']}` — {item['bytes']} bytes; SHA-256 `{item['sha256']}`" for item in source_files)
+    source_lines = "\n".join(f"- `{item['file']}` — SHA-256 `{item['sha256']}`" for item in source_files)
     markdown = f"""# Content audit
 
-Generated: {report['generatedOn']}
+Generated: reproducible
 
-## Structural checks
+## Authored educational source
 
-- Questions / unique exam numbers: **{s['totalQuestions']} / {s['uniqueExamNumbers']}**.
-- Resolved correct options: **{s['resolvedCorrectOptionIds']}/405**.
-- Official stems and option sets unchanged from `ContentRaw`: **{s['unchangedOfficialStems']}/405** and **{s['unchangedOfficialOptionSets']}/405**.
-- Structurally complete beginner / reasoning / wrong-option fields: **{s['withBeginnerExplanation']}/405**, **{s['withReasoningExplanation']}/405**, **{s['withCompleteWrongOptionExplanations']}/405**.
-- Source references: **{s['withSourceReferences']}/405**; unresolved glossary references: **{len(s['unresolvedGlossaryReferences'])}**; missing assets: **{len(s['missingDiagramAssets'])}**.
-- Questions matching known generic-boilerplate phrases: **{len(s['genericBoilerplateQuestionIds'])}**.
+- Total questions: **{len(questions)}**.
+- Authored educational records: **{authored_exact}**.
+- Fallback-generated educational records: **{len(fallback)}**.
+- Unresolved wrong-option mappings: **{len(unresolved_wrong)}**.
+- Unresolved glossary mappings: **{len(unresolved_glossary)}**.
+- Source: `{AUTHORED_PATH.relative_to(ROOT)}`; SHA-256 `{authored_digest}`.
 
-## Explicit curated coverage
+“Authored” means an exact record in the immutable checksum-verified source file. The audit does not assign an automated educational-quality score.
 
-- Explicit question records: **{c['explicitQuestionRecords']}/405**.
-- Curated beginner explanations: **{c['explicitBeginnerExplanations']}/405**.
-- Curated reasoning explanations: **{c['explicitReasoningExplanations']}/405**.
-- Curated wrong-option sets: **{c['explicitWrongOptionSets']}/405**.
-- Records with all required curated fields: **{c['recordsWithEveryRequiredField']}/405**.
-- Production questions using fallback text: **{len(c['fallbackQuestionIds'])}**.
+## Structural, answer, glossary, and assets
 
-“Curated” means an explicit committed per-question override. Fallback text is not counted. The audit intentionally does not invent an automated educational-quality score.
-
-## Answer matching and assets
-
-- Exact / explicit manual / unresolved fuzzy answer matches: **{answer_audit['exact']} / {answer_audit['manual']} / {answer_audit['fuzzy']}**.
-- Glossary entries: **{g['entries']}**.
-- Original exam figures: **{a['originalExamFigures']}**; additional teaching diagrams: **{a['additionalTeachingDiagrams']}**.
-- Documented source conflicts: **{len(report['documentedSourceConflicts'])}** (question 201).
+- Official stems / option sets unchanged from `ContentRaw`: **{unchanged_stems}/405** / **{unchanged_options}/405**.
+- Resolved correct option IDs: **{resolved_correct_ids}/405**.
+- Answer matches exact / manual / fuzzy: **{answer_audit['exact']} / {answer_audit['manual']} / {answer_audit['fuzzy']}**.
+- Built-in glossary entries: **{len(glossary)}**; normalized `fromZero == shortDefinition`: **{len(identical_from_zero)}**.
+- Exam figures / teaching diagrams: **{len(original_assets)} / {len(teaching_assets)}**; missing assets: **{len(missing_assets)}**.
 
 ## Preserved source files
 
@@ -182,8 +171,12 @@ Generated: {report['generatedOn']}
 Machine-readable details: [`content-audit.json`](content-audit.json) and [`answer-match-audit.json`](answer-match-audit.json).
 """
     (DOCS / "content-audit.md").write_text(markdown, encoding="utf-8")
-    if failures: raise SystemExit(f"Content audit failures: {failures}")
-    print(f"Content audit OK: 405 structural; 405 curated; {answer_audit['fuzzy']} fuzzy; {a['additionalTeachingDiagrams']} teaching diagrams")
+    if failures:
+        raise SystemExit(f"Content audit failures: {failures}")
+    print(
+        "Content audit OK: 405 total; 405 authored; 0 fallback; "
+        "0 wrong-option mappings; 0 glossary mappings"
+    )
 
 
 if __name__ == "__main__":

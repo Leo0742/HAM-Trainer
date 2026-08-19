@@ -1,34 +1,40 @@
 {
   "generatedOn": "reproducible",
-  "structural": {
+  "authoredSource": {
+    "file": "ContentAuthored/second-category-405-explanations.json",
+    "sha256": "bbbbb344bc8f770a135bb380b7e8bd341ee1d4986d17f4ac502f4fdfd07159f8",
+    "checksumMatches": true,
     "totalQuestions": 405,
+    "authoredEducationalRecords": 405,
+    "fallbackGeneratedEducationalRecords": 0,
+    "fallbackQuestionIds": [],
+    "unresolvedWrongOptionMappings": [],
+    "unresolvedGlossaryMappings": [],
+    "legacyProductionExplanationSources": [],
+    "manualSourceResolutions": {
+      "cleanTextToStableOptionId": [
+        23,
+        32,
+        426
+      ],
+      "suppliedWrongMapRepairUsingExactAuthoredShortText": [
+        96,
+        123,
+        188,
+        214
+      ],
+      "officialBankExtractionOrAnswerFix": [
+        33,
+        359
+      ]
+    },
+    "method": "Authored means an exact record in the immutable checksum-verified ContentAuthored JSON. No generated fallback is counted or permitted."
+  },
+  "structural": {
     "uniqueExamNumbers": 405,
     "resolvedCorrectOptionIds": 405,
     "unchangedOfficialStems": 405,
-    "unchangedOfficialOptionSets": 405,
-    "withBeginnerExplanation": 405,
-    "withReasoningExplanation": 405,
-    "withCompleteWrongOptionExplanations": 405,
-    "withSourceReferences": 405,
-    "unresolvedGlossaryReferences": [],
-    "missingDiagramAssets": [],
-    "genericBoilerplateQuestionIds": []
-  },
-  "curated": {
-    "overrideFiles": [
-      "ContentOverrides/questions-001-100.json",
-      "ContentOverrides/questions-101-200.json",
-      "ContentOverrides/questions-201-300.json",
-      "ContentOverrides/questions-301-426.json"
-    ],
-    "explicitQuestionRecords": 405,
-    "explicitBeginnerExplanations": 405,
-    "explicitReasoningExplanations": 405,
-    "explicitWrongOptionSets": 405,
-    "recordsWithEveryRequiredField": 405,
-    "fallbackQuestionIds": [],
-    "requiresManualReview": [],
-    "method": "Curated means an explicit committed per-question override record. Fallback-generated text is excluded from all curated counts. Counts do not claim an automated factual-quality score."
+    "unchangedOfficialOptionSets": 405
   },
   "answerMatching": {
     "exact": 400,
@@ -37,20 +43,15 @@
     "unresolved": []
   },
   "glossary": {
-    "entries": 142,
-    "withDefinitions": 142,
-    "withExamples": 142
+    "entries": 165,
+    "identicalNormalizedShortAndFromZero": []
   },
   "assets": {
-    "originalExamFigures": 24,
-    "additionalTeachingDiagrams": 9
+    "examFigures": 26,
+    "teachingDiagrams": 9,
+    "missingAssets": [],
+    "unresolvedRequestedExamFigures": []
   },
-  "documentedSourceConflicts": [
-    {
-      "question": 201,
-      "note": "Guide says U or E; official options contain U. Explicit source match selects U and the in-app historical note preserves the discrepancy."
-    }
-  ],
   "sourceFiles": [
     {
       "file": "Справочник_КЭ.pdf",

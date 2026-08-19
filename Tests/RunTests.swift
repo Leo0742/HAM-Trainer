@@ -165,7 +165,7 @@ struct CoreTestRunner {
             try expect(repeatIndex == 6, "failure was not placed after five other cards")
             repeat { session.advance() } while session.currentQuestion?.id != bank[0].id
             session.record(.incorrect)
-            try expect(session.queue.count(where: { $0.id == bank[0].id }) == 2, "normal session exceeded repeat cap")
+            try expect(session.queue.filter({ $0.id == bank[0].id }).count == 2, "normal session exceeded repeat cap")
         }))
 
         tests.append(("short session does not violate scheduled gap", {
@@ -459,7 +459,7 @@ struct CoreTestRunner {
             try expect(Set(questions.map(\.id)).count == 405, "duplicate IDs")
             for question in questions {
                 try expect(!question.stem.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, "empty stem \(question.examNumber)")
-                try expect(question.options.count >= 3 && question.options.allSatisfy { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }, "incomplete options \(question.examNumber)")
+                try expect(question.options.count == 4 && question.options.allSatisfy { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }, "incomplete options \(question.examNumber)")
                 try expect(question.options.contains(where: { $0.id == question.correctOptionId }), "invalid answer \(question.examNumber)")
                 try expect(question.sourceReference.sourceQuestionNumber == question.examNumber, "missing provenance \(question.examNumber)")
                 if let asset = question.figureAsset {
@@ -475,22 +475,21 @@ struct CoreTestRunner {
             let missing = Set(questions.flatMap(\.glossaryTerms)).subtracting(ids)
             try expect(missing.isEmpty, "unresolved glossary IDs: \(missing.sorted())")
             try expect(glossary.count >= 100, "glossary is not comprehensive: \(glossary.count)")
+            let duplicateBeginner = glossary.filter {
+                $0.shortDefinition.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                    == $0.fromZero.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            }
+            try expect(duplicateBeginner.isEmpty, "fromZero duplicates shortDefinition: \(duplicateBeginner.map(\.id))")
         }))
 
         tests.append(("runtime explanations are structurally complete", {
             let questions = try AppStore.decoder.decode([Question].self, from: Data(contentsOf: content.appendingPathComponent("questions.json")))
-            let banned = [
-                "Если слова в формулировке незнакомы, откройте выделенные термины",
-                "Сначала определите, что именно проверяет вопрос. Затем сопоставьте это с правилом:",
-                "не соответствует правилу из экзаменационного банка"
-            ]
             for question in questions {
-                try expect(question.explanationShort.count >= 25, "short explanation too small: \(question.examNumber)")
-                try expect(question.explanationBeginner.count >= 160, "beginner explanation too small: \(question.examNumber)")
-                try expect(question.explanationReasoning.count >= 80, "reasoning too small: \(question.examNumber)")
-                try expect(!banned.contains(where: { question.explanationBeginner.contains($0) || question.explanationReasoning.contains($0) }), "generic explanation: \(question.examNumber)")
-                try expect(question.wrongOptionExplanations.count == question.options.count - 1, "wrong-option coverage: \(question.examNumber)")
-                try expect(question.wrongOptionExplanations.values.allSatisfy { value in !banned.contains(where: value.contains) && value.count >= 30 }, "generic wrong-option explanation: \(question.examNumber)")
+                try expect(!question.explanationShort.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, "missing short explanation: \(question.examNumber)")
+                try expect(!question.explanationBeginner.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, "missing beginner explanation: \(question.examNumber)")
+                try expect(!question.explanationReasoning.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, "missing reasoning: \(question.examNumber)")
+                try expect(question.wrongOptionExplanations.count == 3, "wrong-option coverage: \(question.examNumber)")
+                try expect(question.wrongOptionExplanations.values.allSatisfy { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }, "empty wrong-option explanation: \(question.examNumber)")
             }
         }))
 

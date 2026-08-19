@@ -4197,9 +4197,9 @@
     {
       "questionNumber": 359,
       "guideAnswer": "D < V < R.",
-      "matchedOfficialOption": "D > V > R",
-      "matchedOptionIndex": 0,
-      "productionCorrectOptionId": "q-359-option-1",
+      "matchedOfficialOption": "D < V < R",
+      "matchedOptionIndex": 2,
+      "productionCorrectOptionId": "q-359-option-3",
       "confidence": 1.0,
       "method": "exact",
       "note": "Normalized guide answer exactly matches the official option.",

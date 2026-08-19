@@ -20,6 +20,6 @@ Important fields:
 
 Mutable fields such as attempts, notes, bookmarks, review stage, completed study step, next-due study step, concept state, and personal glossary entries are intentionally absent from content JSON and live in the progress store.
 
-## Overrides
+## Authored layer and overrides
 
-`ContentRaw/questions-imported.json` is the immutable handoff from PDF extraction. `ContentOverrides/questions-*.json` contains an explicit six-field educational record for every question; these files, not fallback output, define curated coverage. `Tools/build_content.py` assembles those records and applies `ContentOverrides/question-overrides.json` last for source corrections, historical notes, and explicitly resolved ambiguities. Do not edit generated `Content/questions.json` for a correction that must survive the next import.
+`ContentRaw/questions-imported.json` is the normalized handoff from PDF extraction. `ContentAuthored/second-category-405-explanations.json` is the single immutable educational source for exactly 405 questions. `Tools/build_content.py` verifies its checksum, maps option text to stable option IDs, resolves human-readable glossary terms, and merges only verified source/answer corrections from `ContentOverrides/question-overrides.json`. It never rewrites the authored file or generates fallback explanations. Do not edit generated `Content/questions.json` directly.
