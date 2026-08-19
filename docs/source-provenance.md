@@ -1,20 +1,26 @@
-# Source provenance and audit
+# Source provenance
 
-## Documents
+## Локальные документы
 
-The reference PDF is a 233-page 2015 edition of A. N. Zamoroka's exam handbook. Its question appendix contains 426 numbered questions, exact answer choices, and embedded figures. The newer 104-page guide is titled “Радиолюбитель второй категории — теория и 405 вопросов,” revision 1 August 2026. It explicitly identifies the second-category ranges, 30-question exam, 25/30 threshold, beginner theory, topics, types, correct-answer text, explanations, review tables, and source-page callouts for diagrams.
+Проект использует две предоставленные пользователем копии:
 
-The import audit found exactly 405 numbered guide entries for the required ranges and all 426 reference entries. The selected set is 1–38, 47–98, 100–374, and 387–426. Generated provenance records the actual page in each supplied PDF, not an inferred external edition page.
+- `Справочник_КЭ.pdf` — 233 страницы, издание 2015 года, А. Н. Заморока; точные формулировки, варианты и схемы;
+- `radiolyubitel_2_category_guide_2026.pdf` — 104 страницы, редакция 1 августа 2026 года; выборка второй категории, темы, ответы и пояснения.
 
-## Source priority
+Контрольные суммы и уведомление о правах находятся в `ExamSources/README.md`. Локальный справочник 2015 года не выдаётся за текущую редакцию: официальная страница СРР сейчас ссылается на отдельный PDF 2020 года объёмом 229 страниц.
 
-- Newer guide: selection, topic, question type, learning structure, terminology, correct-answer text, and explanation.
-- Reference: exact question wording, complete options, original question number, and required figure pages.
+## Приоритет источников
 
-Question 201 exposes a real wording mismatch: the guide states “U или E,” while the supplied reference option contains `U`. The app selects the actual reference option and preserves the mismatch in `legalHistoricalNote`.
+- руководство 2026: состав второй категории, тема, тип, текст правильного ответа и исходное пояснение;
+- справочник 2015: точная формулировка вопроса, варианты, исходный номер и схемы;
+- `ContentOverrides/question-overrides.json`: явно проверенные расхождения и редакционные уточнения, применяемые последними.
 
-## Figures and copyright separation
+Вопрос 201 сохраняет известное различие: руководство пишет «U или E», а вариант локального справочника содержит `U`. Приложение выбирает реальный option ID и отдельно хранит историко‑правовую заметку.
 
-The original PDFs are not copied into the project. The importer renders only the 14 local reference pages needed by 24 figure-dependent selected questions and stores them under `Content/diagrams/`. These assets are for the locally built study application and should not be published blindly. Original diagrams created in the future should use a separate naming/source field.
+## Воспроизводимый конвейер
 
-Every question has both reference and explanation document/page metadata. `source-map.json` makes later correction audits possible without loading the full question bank.
+`import_questions.py` записывает нормализованный результат в `ContentRaw/`; `build_content.py` создаёт итоговые объяснения и глоссарий; затем применяются overrides. Благодаря этому повторный импорт PDF не стирает учебные слои. `source-map.json` связывает каждую из 405 карточек с обоими документами и страницами.
+
+Полные PDF сохранены отдельно в `ExamSources/`. Для 24 графических вопросов `extract_figures.py` создаёт 24 question-specific PNG. Эти фрагменты содержат только сравниваемые схемы/графики и не показывают красный печатный ключ ответа. Восемь пограничных вопросов получают фактическую страницу изображения отдельно от страницы начала текста.
+
+Автоматический аудит доказывает структурную полноту и отсутствие прежнего boilerplate, но не притворяется экспертизой нормативных формулировок. Повторяющиеся исходные краткие пояснения перечислены в `docs/content-audit.md` для ручной предметной проверки.

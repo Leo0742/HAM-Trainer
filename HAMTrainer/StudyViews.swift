@@ -4,6 +4,7 @@ struct SmartStudyView: View {
     @EnvironmentObject private var store: AppStore
     @State private var length = 20
     @State private var session: StudySession?
+    @State private var noRequiredReviews = false
 
     var body: some View {
         Group {
@@ -14,16 +15,25 @@ struct SmartStudyView: View {
                     Spacer()
                     Image(systemName: "sparkles").font(.system(size: 46)).foregroundStyle(.tint)
                     Text("Умная учёба").font(.system(size: 34, weight: .bold, design: .rounded))
-                    Text("Сессия смешивает просроченные повторения, новые вопросы и немного материала для поддержания памяти. Одна слабая тема не займёт больше 40% очереди.")
+                    Text("Сессия сначала берёт созревшие слабые вопросы, затем новые и обычные повторы. Интервалы измеряются количеством отвеченных карточек, а не днями.")
                         .font(.title3).foregroundStyle(.secondary).frame(maxWidth: 700, alignment: .leading)
                     Picker("Длина", selection: $length) {
                         ForEach([10, 20, 30, 40], id: \.self) { Text("\($0) вопросов").tag($0) }
                     }.pickerStyle(.segmented).frame(maxWidth: 520)
                     Button("Начать сессию") {
-                        session = StudySession(questions: store.smartQuestions(length: length))
+                        let cards = store.smartCards(length: length)
+                        if cards.isEmpty { noRequiredReviews = true }
+                        else { session = StudySession(cards: cards) }
                     }.buttonStyle(.borderedProminent).controlSize(.large)
+                    if noRequiredReviews {
+                        ContentUnavailableView(
+                            "Обязательных повторений сейчас нет",
+                            systemImage: "checkmark.seal",
+                            description: Text("Умная учёба не подставляет неготовые освоенные вопросы. Можно открыть слабые вопросы, случайную тему или пробный экзамен.")
+                        ).frame(maxWidth: 700)
+                    }
                     HStack(spacing: 22) {
-                        Label("Ошибки возвращаются через 6–12 вопросов", systemImage: "arrow.uturn.forward")
+                        Label("Ошибки возвращаются после 5 других вопросов", systemImage: "arrow.uturn.forward")
                         Label("Не больше двух появлений", systemImage: "shield.lefthalf.filled")
                     }.font(.callout).foregroundStyle(.secondary)
                     Spacer()
@@ -49,8 +59,15 @@ struct StudyRunnerView: View {
 
     var body: some View {
         if session.isComplete {
-            SessionSummaryView(summary: session.summary, onClose: onFinish)
-        } else if let question = session.current {
+            SessionSummaryView(
+                summary: session.summary,
+                onReviewMistakes: reviewMistakes,
+                onReviewWeak: reviewWeak,
+                onContinueSmart: continueSmart,
+                onClose: onFinish
+            )
+        } else if let card = session.current {
+            let question = card.question
             VStack(spacing: 0) {
                 HStack {
                     Text("\(session.position) из \(session.queue.count)").monospacedDigit().foregroundStyle(.secondary)
@@ -62,9 +79,11 @@ struct StudyRunnerView: View {
 
                 QuestionInteractionView(question: question, awaitingNext: $awaitingNext, onOutcome: { outcome in
                     previousState = store.progressFor(question).state
-                    _ = store.record(outcome, for: question)
-                    session.record(outcome)
+                    let updated = store.record(outcome, for: question, reason: card.reason)
+                    session.record(outcome, previousState: previousState ?? .unseen, newState: updated.state)
                     lastOutcome = outcome
+                }, onConceptUnclear: { id in
+                    session.markConceptUnclear(id)
                 }, onNext: {
                     awaitingNext = false
                     lastOutcome = nil
@@ -74,6 +93,24 @@ struct StudyRunnerView: View {
             }
         }
     }
+
+    private func reviewMistakes() {
+        let questions = store.questions(for: session.summary.mistakeQuestionIDs).shuffled()
+        guard !questions.isEmpty else { return }
+        session = StudySession(questions: questions, reason: .sessionMistake)
+    }
+
+    private func reviewWeak() {
+        let questions = store.questions.filter { let value = store.progressFor($0); return value.state == .weak || value.manuallyMarkedHard }
+        guard !questions.isEmpty else { return }
+        session = StudySession(questions: questions, drillWeak: true)
+    }
+
+    private func continueSmart() {
+        let cards = store.smartCards(length: store.settings.defaultSessionLength)
+        guard !cards.isEmpty else { onFinish(); return }
+        session = StudySession(cards: cards)
+    }
 }
 
 struct QuestionInteractionView: View {
@@ -81,6 +118,7 @@ struct QuestionInteractionView: View {
     let question: Question
     @Binding var awaitingNext: Bool
     let onOutcome: (AttemptOutcome) -> Void
+    let onConceptUnclear: (String) -> Void
     let onNext: () -> Void
     @State private var displayedOptions: [QuestionOption] = []
     @State private var selectedOptionId: String?
@@ -88,6 +126,7 @@ struct QuestionInteractionView: View {
     @State private var showExplanation = false
     @State private var selectedGlossary: GlossaryEntry?
     @State private var note = ""
+    @State private var personalDraft: PersonalGlossaryEntry?
 
     var body: some View {
         ScrollView {
@@ -99,6 +138,7 @@ struct QuestionInteractionView: View {
                     Button { store.toggleBookmark(question) } label: { Label("Закладка", systemImage: store.progressFor(question).bookmarked ? "bookmark.fill" : "bookmark") }
                         .keyboardShortcut("b", modifiers: [])
                     Button { store.toggleHard(question) } label: { Label("Сложный", systemImage: store.progressFor(question).manuallyMarkedHard ? "flame.fill" : "flame") }
+                    Button { personalDraft = PersonalGlossaryEntry(term: "", relatedQuestionIDs: [question.id]) } label: { Label("В мой словарь", systemImage: "plus.rectangle.on.rectangle") }
                 }
                 Text(question.stem).font(.system(size: 22, weight: .semibold)).textSelection(.enabled)
                 FigureView(asset: question.figureAsset)
@@ -133,7 +173,12 @@ struct QuestionInteractionView: View {
             displayedOptions = store.settings.randomizeOptions ? question.options.shuffled() : question.options
             note = store.progressFor(question).note
         }
-        .sheet(item: $selectedGlossary) { term in GlossaryCard(entry: term) }
+        .sheet(item: $selectedGlossary) { term in
+            GlossaryCard(entry: term, onMarkedUnclear: { onConceptUnclear(term.id) })
+        }
+        .sheet(item: $personalDraft) { entry in
+            PersonalGlossaryEditor(entry: entry, isNew: true)
+        }
     }
 
     @ViewBuilder
@@ -174,7 +219,7 @@ struct QuestionInteractionView: View {
         selectedOptionId = optionId
         outcome = value
         awaitingNext = true
-        showExplanation = value != .correct || store.settings.explanationStyle != "Кратко"
+        showExplanation = true
         onOutcome(value)
     }
 
@@ -231,6 +276,13 @@ struct ExplanationView: View {
                 }
             }.padding(7)
         } label: { Label("Объяснение", systemImage: "lightbulb") }
+        .onAppear {
+            layer = switch store.settings.explanationStyle {
+            case "С нуля": 1
+            case "Подробно": 2
+            default: 0
+            }
+        }
     }
     private var layerText: String {
         switch layer {
@@ -271,14 +323,23 @@ struct GlossaryCard: View {
     @EnvironmentObject private var store: AppStore
     @Environment(\.dismiss) private var dismiss
     let entry: GlossaryEntry
+    var onMarkedUnclear: (() -> Void)? = nil
+    @State private var note = ""
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack { Image(systemName: "character.book.closed.fill").foregroundStyle(.tint); Text(entry.term).font(.title.bold()); Spacer(); Button("Готово") { dismiss() } }
             Text(entry.shortDefinition).font(.title3)
             Text(entry.fromZero)
             Label(entry.radioExample, systemImage: "radio").foregroundStyle(.secondary)
-            Button("Я не понимаю этот термин") { store.markConceptWeak(entry.id); dismiss() }.buttonStyle(.borderedProminent)
+            TextField("Личная заметка", text: $note).textFieldStyle(.roundedBorder)
+                .onChange(of: note) { _, value in store.updateConceptNote(value, id: entry.id) }
+            HStack {
+                Button("Пока не понимаю") { store.markConceptWeak(entry.id); onMarkedUnclear?(); dismiss() }
+                    .buttonStyle(.borderedProminent).tint(.orange)
+                Button("Понял") { store.markConceptUnderstood(entry.id); dismiss() }.buttonStyle(.bordered)
+            }
         }.padding(26).frame(width: 500)
+            .onAppear { note = store.conceptProgressFor(entry.id).personalNotes }
     }
 }
 
@@ -303,7 +364,11 @@ struct MistakeReasonBar: View {
 }
 
 struct SessionSummaryView: View {
+    @EnvironmentObject private var store: AppStore
     let summary: SessionSummary
+    let onReviewMistakes: () -> Void
+    let onReviewWeak: () -> Void
+    let onContinueSmart: () -> Void
     let onClose: () -> Void
     var body: some View {
         VStack(spacing: 24) {
@@ -313,10 +378,25 @@ struct SessionSummaryView: View {
                 StatCard(title: "Верно", value: summary.correct, icon: "checkmark", tint: .green)
                 StatCard(title: "Ошибки", value: summary.incorrect, icon: "xmark", tint: .red)
                 StatCard(title: "Не знаю", value: summary.dontKnow, icon: "questionmark", tint: .orange)
-            }.frame(maxWidth: 700)
+                StatCard(title: "Подсмотрено", value: summary.revealed, icon: "eye", tint: .purple)
+            }.frame(maxWidth: 850)
+            HStack(spacing: 18) {
+                Label("Ослабли: \(summary.becameWeak)", systemImage: "arrow.down.circle")
+                Label("Улучшились: \(summary.improved)", systemImage: "arrow.up.circle")
+                Label("Освоены: \(summary.mastered)", systemImage: "checkmark.seal")
+            }.foregroundStyle(.secondary)
             if let hard = summary.topics.max(by: { $0.value < $1.value }) { Text("Больше всего внимания потребовала тема «\(hard.key)».").foregroundStyle(.secondary) }
-            Text("Ошибки уже добавлены в расписание. Автоматическое повторение не будет показывать один вопрос подряд.").foregroundStyle(.secondary)
-            Button("Вернуться") { onClose() }.buttonStyle(.borderedProminent).controlSize(.large)
+            if !summary.unclearConceptIDs.isEmpty {
+                Text("Отмечены непонятными: \(summary.unclearConceptIDs.compactMap { id in store.glossary.first(where: { $0.id == id })?.term }.joined(separator: ", ")).")
+                    .foregroundStyle(.secondary)
+            }
+            Text("Ошибки уже запланированы по глобальному счётчику. Повтор появится только после нужного числа других карточек.").foregroundStyle(.secondary)
+            HStack {
+                Button("Разобрать ошибки этой сессии", action: onReviewMistakes).buttonStyle(.borderedProminent).disabled(summary.mistakeQuestionIDs.isEmpty)
+                Button("Повторить слабые", action: onReviewWeak).buttonStyle(.bordered)
+                Button("Продолжить умную учёбу", action: onContinueSmart).buttonStyle(.bordered)
+                Button("Закрыть", action: onClose).buttonStyle(.borderless)
+            }.controlSize(.large)
         }.padding(36).frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
@@ -328,6 +408,7 @@ struct MockExamView: View {
     @State private var answers: [String: String] = [:]
     @State private var displayed: [QuestionOption] = []
     @State private var finished = false
+    @State private var result: MockExamResult?
 
     var body: some View {
         if questions.isEmpty { intro }
@@ -369,21 +450,26 @@ struct MockExamView: View {
     }
 
     private var results: some View {
-        let correct = questions.count(where: { answers[$0.id] == $0.correctOptionId })
-        let failed = questions.filter { answers[$0.id] != $0.correctOptionId }
+        let currentResult = result ?? MockExamBuilder().grade(questions: questions, answers: answers)
+        let incorrectIDs = Set(currentResult.incorrectQuestionIDs)
+        let failed = questions.filter { incorrectIDs.contains($0.id) }
         return ScrollView {
             VStack(alignment: .leading, spacing: 22) {
-                Text(correct >= 25 ? "Экзамен сдан" : "Нужно ещё немного практики").font(.largeTitle.bold()).foregroundStyle(correct >= 25 ? .green : .orange)
-                Text("\(correct) / 30").font(.system(size: 52, weight: .bold, design: .rounded)).monospacedDigit()
+                Text(currentResult.correct >= 25 ? "Экзамен сдан" : "Нужно ещё немного практики").font(.largeTitle.bold()).foregroundStyle(currentResult.correct >= 25 ? .green : .orange)
+                Text("\(currentResult.correct) / 30").font(.system(size: 52, weight: .bold, design: .rounded)).monospacedDigit()
                 Text("Проходной результат: 25 / 30").foregroundStyle(.secondary)
+                HStack {
+                    Label("Отвечено: \(currentResult.answered)", systemImage: "checklist")
+                    Label("Без ответа: \(currentResult.unansweredQuestionIDs.count)", systemImage: "minus.circle")
+                }.foregroundStyle(.secondary)
                 Divider()
-                Text("Разбор ошибок").font(.title2.bold())
+                Text(failed.isEmpty ? "Ошибок в отправленных ответах нет" : "Разбор отправленных ошибок").font(.title2.bold())
                 ForEach(failed) { question in
                     DisclosureGroup("№ \(question.examNumber)  \(question.stem)") {
                         VStack(alignment: .leading, spacing: 8) { Text("Ответ банка: \(question.officialCorrectAnswerText)").bold(); Text(question.explanationShort) }.padding(.vertical, 8)
                     }
                 }
-                Button("Новый экзамен") { questions = []; answers = [:]; index = 0; finished = false }.buttonStyle(.borderedProminent)
+                Button("Новый экзамен") { questions = []; answers = [:]; index = 0; finished = false; result = nil }.buttonStyle(.borderedProminent)
             }.padding(30).frame(maxWidth: 900, alignment: .leading)
         }
     }
@@ -392,8 +478,6 @@ struct MockExamView: View {
     private func finish() {
         guard !finished else { return }
         finished = true
-        let correct = questions.count(where: { answers[$0.id] == $0.correctOptionId })
-        let failed = questions.filter { answers[$0.id] != $0.correctOptionId }
-        store.addMockScore(correct: correct, failed: failed)
+        result = store.finishMockExam(questions: questions, answers: answers)
     }
 }

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Rebuild HAM Trainer content from the two supplied PDFs.
+"""Extract the normalized HAM Trainer source bank from the supplied PDFs.
 
-The script uses pdftotext/pdftoppm so source extraction is reproducible. It never
-copies the source PDFs into the project. Manually maintained JSON overrides are
-applied after extraction.
+The importer writes ContentRaw only, then invokes build_content.py. Keeping raw
+extraction separate from the teaching layer means a later PDF import cannot
+erase curated explanations or overrides.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ import difflib
 import json
 import re
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -249,18 +250,24 @@ def main() -> None:
     glossary = json.loads((project / "Content" / "glossary.json").read_text(encoding="utf-8"))
     overrides = load_overrides(project / "ContentOverrides" / "question-overrides.json")
     questions, report = build_questions(parse_guide(guide_raw), parse_reference(reference_raw), glossary, overrides)
-    output = project / "Content" / "questions.json"
+    raw_dir = project / "ContentRaw"
+    raw_dir.mkdir(exist_ok=True)
+    output = raw_dir / "questions-imported.json"
     output.write_text(json.dumps(questions, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     topics = [{"id": f"topic-{index + 1:02d}", "title": title, "questionCount": sum(q["topic"] == title for q in questions)} for index, title in enumerate(sorted({q["topic"] for q in questions}))]
-    (project / "Content" / "topics.json").write_text(json.dumps(topics, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    (raw_dir / "topics-imported.json").write_text(json.dumps(topics, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     source_map = {q["id"]: q["sourceReference"] for q in questions}
-    (project / "Content" / "source-map.json").write_text(json.dumps(source_map, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    (raw_dir / "source-map-imported.json").write_text(json.dumps(source_map, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     (cache / "match-report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     low = [entry for entry in report if entry["confidence"] < 0.74]
     if low:
         raise ValueError(f"{len(low)} answer matches require overrides; see {cache / 'match-report.json'}")
-    extract_figures(args.reference, questions, project / "Content" / "diagrams")
-    print(f"Imported {len(questions)} questions; {sum(q['figureAsset'] is not None for q in questions)} use figures")
+    subprocess.run([
+        sys.executable, str(project / "Tools" / "extract_figures.py"),
+        "--reference", str(args.reference),
+    ], check=True)
+    subprocess.run([sys.executable, str(project / "Tools" / "build_content.py")], check=True)
+    print(f"Imported and enriched {len(questions)} questions; {sum(q['figureAsset'] is not None for q in questions)} use figures")
 
 
 if __name__ == "__main__":

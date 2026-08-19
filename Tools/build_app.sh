@@ -1,7 +1,14 @@
 #!/bin/zsh
 set -euo pipefail
 PROJECT_DIR="${0:A:h:h}"
-SDK_PATH="${SDKROOT:-$(xcrun --sdk macosx --show-sdk-path)}"
+COMPATIBLE_SDK="/Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk"
+if [[ -n "${SDKROOT:-}" ]]; then
+  SDK_PATH="$SDKROOT"
+elif [[ -d "$COMPATIBLE_SDK" ]]; then
+  SDK_PATH="$COMPATIBLE_SDK"
+else
+  SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
+fi
 export SDKROOT="$SDK_PATH"
 export CLANG_MODULE_CACHE_PATH="$PROJECT_DIR/.build/clang-cache"
 export SWIFTPM_MODULECACHE_OVERRIDE="$PROJECT_DIR/.build/swift-cache"

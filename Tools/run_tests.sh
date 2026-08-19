@@ -1,7 +1,14 @@
 #!/bin/zsh
 set -euo pipefail
 PROJECT_DIR="${0:A:h:h}"
-SDK_PATH="${SDKROOT:-$(xcrun --sdk macosx --show-sdk-path)}"
+COMPATIBLE_SDK="/Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk"
+if [[ -n "${SDKROOT:-}" ]]; then
+  SDK_PATH="$SDKROOT"
+elif [[ -d "$COMPATIBLE_SDK" ]]; then
+  SDK_PATH="$COMPATIBLE_SDK"
+else
+  SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
+fi
 CACHE_DIR="$PROJECT_DIR/.build/manual-tests"
 mkdir -p "$CACHE_DIR/module-cache"
 swiftc \
