@@ -8,7 +8,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 AUTHORED_PATH = ROOT / "ContentAuthored" / "second-category-405-explanations.json"
-AUTHORED_SHA256 = "bbbbb344bc8f770a135bb380b7e8bd341ee1d4986d17f4ac502f4fdfd07159f8"
+AUTHORED_SHA256 = "d0f1a131f0495a1914f02a052e678bcbd471a6e1f884c0a5bc9f6a190b3c0253"
+GLOSSARY_AUTHORED_PATH = ROOT / "ContentAuthored" / "built-in-glossary-176.json"
+GLOSSARY_AUTHORED_SHA256 = "f2b193c916ce5be64475e6e9cbb01a6f5348930fc4d51cfb494488ffff05bc4c"
 EXPECTED = set(range(1, 39)) | set(range(47, 99)) | set(range(100, 375)) | set(range(387, 427))
 
 
@@ -24,6 +26,9 @@ def main() -> None:
     authored_bytes = AUTHORED_PATH.read_bytes()
     assert hashlib.sha256(authored_bytes).hexdigest() == AUTHORED_SHA256, "authored JSON checksum"
     authored = json.loads(authored_bytes)["questions"]
+    glossary_authored_bytes = GLOSSARY_AUTHORED_PATH.read_bytes()
+    assert hashlib.sha256(glossary_authored_bytes).hexdigest() == GLOSSARY_AUTHORED_SHA256, "authored glossary JSON checksum"
+    glossary_authored = json.loads(glossary_authored_bytes)["entries"]
 
     assert len(questions) == len(authored) == 405
     assert {q["examNumber"] for q in questions} == {int(number) for number in authored} == EXPECTED
@@ -31,8 +36,11 @@ def main() -> None:
     assert all(len(q["options"]) == 4 for q in questions), "every question must have four official options"
     assert set(source_map) == {q["id"] for q in questions}, "source map differs from bank"
 
+    assert len(glossary) == len(glossary_authored) == 176, "authored glossary coverage"
     term_ids = {entry["id"] for entry in glossary}
     assert len(term_ids) == len(glossary), "duplicate glossary IDs"
+    authored_by_term = {entry["term"]: entry for entry in glossary_authored}
+    assert len(authored_by_term) == 176, "duplicate authored glossary terms"
     identical_beginner = []
     for entry in glossary:
         for field in ("term", "shortDefinition", "fromZero", "radioExample"):
@@ -40,9 +48,13 @@ def main() -> None:
         assert set(entry.get("relatedTerms", [])) <= term_ids, f"broken related term in {entry['id']}"
         if normalized(entry["shortDefinition"]) == normalized(entry["fromZero"]):
             identical_beginner.append(entry["id"])
+        source = authored_by_term[entry["term"]]
+        for field in ("shortDefinition", "fromZero", "radioExample"):
+            assert entry[field] == source[field], f"authored glossary {field} changed: {entry['term']}"
         if entry.get("diagramAsset"):
             assert (ROOT / "Content" / entry["diagramAsset"]).is_file(), entry["diagramAsset"]
-    assert not identical_beginner, f"glossary fromZero duplicates: {identical_beginner}"
+    # Equality is allowed only when it is present in the checksum-verified
+    # authored source; the builder must not generate a wrapper or fallback.
 
     raw_by_number = {q["examNumber"]: q for q in raw}
     for question in questions:
@@ -68,9 +80,19 @@ def main() -> None:
         source = question["sourceReference"]
         assert source["sourceQuestionNumber"] == number and source["page"] > 0 and source["explanationPage"] > 0
 
+    known_bindings = {
+        23: ("q-023-option-4", "RL3DX"),
+        32: ("q-032-option-4", "Лицензию HAREC."),
+        408: ("q-408-option-4", "Для измерения текущего значения выходной мощности."),
+        419: ("q-419-option-4", "Только углекислотные огнетушители."),
+    }
+    for number, (option_id, authored_text) in known_bindings.items():
+        question = next(question for question in questions if question["examNumber"] == number)
+        assert question["wrongOptionExplanations"][option_id] == authored[str(number)]["wrongOptionExplanationsByText"][authored_text]
+
     print(
         f"Content integrity OK: {len(questions)} questions; {len(authored)} authored; "
-        f"0 fallback; {len(glossary)} glossary; {len(identical_beginner)} identical fromZero"
+        f"0 fallback; {len(glossary)} glossary; {len(identical_beginner)} authored-identical fromZero"
     )
 
 

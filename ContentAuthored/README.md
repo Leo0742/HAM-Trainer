@@ -1,6 +1,9 @@
 # HAM Trainer — authored educational content package
 
-This file accompanies `HAM_Trainer_Second_Category_405_Authored_Explanations.json`.
+This directory contains the two immutable, checksum-verified educational sources used by the production content build:
+
+- `second-category-405-explanations.json` — 405 authored question records, SHA-256 `d0f1a131f0495a1914f02a052e678bcbd471a6e1f884c0a5bc9f6a190b3c0253`.
+- `built-in-glossary-176.json` — 176 authored glossary records, SHA-256 `f2b193c916ce5be64475e6e9cbb01a6f5348930fc4d51cfb494488ffff05bc4c`.
 
 ## Purpose
 
@@ -34,10 +37,10 @@ Exactly 405 records:
 1. Map question records by `examNumber`.
 2. Preserve the official stems/options/correct answer already present in HAM Trainer.
 3. Map `wrongOptionExplanationsByText` to stable option IDs using normalized exact text; never bind explanations to displayed letters because the app can shuffle options.
-4. Questions 23 and 32 had table/figure text appended to one option by PDF extraction. This package already uses the clean intended option keys (`RL3DX` and `Лицензию HAREC.`); reconcile them against the current official bank rather than reintroducing PDF table text.
-5. `glossaryTerms` contains human-readable names, not guaranteed internal IDs. Resolve them against existing glossary `term`/`aliases`; add a missing built-in concept only when truly needed.
+4. Questions 23, 32, 408, 419, and 426 have clean intended option keys where the PDF extraction appended table/section text; reconcile them to stable option IDs without reintroducing appended text.
+5. `glossaryTerms` contains human-readable names. Resolve them against the 176-record authored glossary while preserving stable legacy IDs, aliases, and diagrams for matching concepts.
 6. Treat this package as immutable authored source data. Build/CI may validate and merge it, but must not paraphrase, regenerate, rotate templates, or overwrite it.
-7. Do not use `Tools/curate_content.py` (or equivalent generic text generation) to recreate these explanations.
+7. Do not use `Tools/curate_content.py`, generic `fromZero` wrappers, or equivalent text generation to recreate either source.
 
 ## Source integrity
 
@@ -52,7 +55,7 @@ The package was prepared against these preserved source files:
 - all required educational fields non-empty;
 - exactly three wrong-option explanations per question;
 - no legacy generic filler markers;
-- no duplicate exact beginner/reasoning records;
+- all 176 glossary records have non-empty authored `fromZero` content;
 - PDF table text removed from wrong-option mapping keys for questions 23 and 32;
 - targeted review of calculations, receiver/transmitter theory, antennas, propagation, electronics, operational procedure, and safety sections;
 - explicit exam-bank caveat for question 148 (FM span convention);

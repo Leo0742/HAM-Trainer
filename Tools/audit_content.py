@@ -13,7 +13,9 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTENT = ROOT / "Content"
 DOCS = ROOT / "docs"
 AUTHORED_PATH = ROOT / "ContentAuthored" / "second-category-405-explanations.json"
-AUTHORED_SHA256 = "bbbbb344bc8f770a135bb380b7e8bd341ee1d4986d17f4ac502f4fdfd07159f8"
+AUTHORED_SHA256 = "d0f1a131f0495a1914f02a052e678bcbd471a6e1f884c0a5bc9f6a190b3c0253"
+GLOSSARY_AUTHORED_PATH = ROOT / "ContentAuthored" / "built-in-glossary-176.json"
+GLOSSARY_AUTHORED_SHA256 = "f2b193c916ce5be64475e6e9cbb01a6f5348930fc4d51cfb494488ffff05bc4c"
 EXPECTED_SOURCE_HASHES = {
     "Справочник_КЭ.pdf": "8108c82eb316069167a7ae3e525a9991637e2f547f12fbbde637e684dbad55d7",
     "radiolyubitel_2_category_guide_2026.pdf": "163c01bded0c4b5cee92892948f15eab32b226f6f0bd0edc70f0beecd6317749",
@@ -36,6 +38,9 @@ def main() -> None:
     authored_bytes = AUTHORED_PATH.read_bytes()
     authored_digest = hashlib.sha256(authored_bytes).hexdigest()
     authored = json.loads(authored_bytes)["questions"]
+    glossary_authored_bytes = GLOSSARY_AUTHORED_PATH.read_bytes()
+    glossary_authored_digest = hashlib.sha256(glossary_authored_bytes).hexdigest()
+    glossary_authored = json.loads(glossary_authored_bytes)["entries"]
     by_number = {q["examNumber"]: q for q in questions}
     raw_by_number = {q["examNumber"]: q for q in raw}
 
@@ -59,6 +64,14 @@ def main() -> None:
     identical_from_zero = sorted(
         entry["id"] for entry in glossary
         if normalized(entry["shortDefinition"]) == normalized(entry["fromZero"])
+    )
+    glossary_authored_by_term = {entry["term"]: entry for entry in glossary_authored}
+    glossary_exact = sum(
+        entry["term"] in glossary_authored_by_term and all(
+            entry[field] == glossary_authored_by_term[entry["term"]][field]
+            for field in ("shortDefinition", "fromZero", "radioExample")
+        )
+        for entry in glossary
     )
     original_assets = sorted({q["figureAsset"] for q in questions if q.get("figureAsset")})
     teaching_assets = sorted({
@@ -97,8 +110,8 @@ def main() -> None:
             "unresolvedGlossaryMappings": unresolved_glossary,
             "legacyProductionExplanationSources": legacy_sources,
             "manualSourceResolutions": {
-                "cleanTextToStableOptionId": [23, 32, 426],
-                "suppliedWrongMapRepairUsingExactAuthoredShortText": [96, 123, 188, 214],
+                "cleanTextToStableOptionId": [23, 32, 408, 419, 426],
+                "suppliedWrongMapRepairUsingExactAuthoredShortText": [],
                 "officialBankExtractionOrAnswerFix": [33, 359],
             },
             "method": "Authored means an exact record in the immutable checksum-verified ContentAuthored JSON. No generated fallback is counted or permitted.",
@@ -115,6 +128,10 @@ def main() -> None:
         },
         "glossary": {
             "entries": len(glossary),
+            "authoredSource": str(GLOSSARY_AUTHORED_PATH.relative_to(ROOT)),
+            "authoredSha256": glossary_authored_digest,
+            "checksumMatches": glossary_authored_digest == GLOSSARY_AUTHORED_SHA256,
+            "authoredEducationalRecords": glossary_exact,
             "identicalNormalizedShortAndFromZero": identical_from_zero,
         },
         "assets": {
@@ -128,12 +145,13 @@ def main() -> None:
     failures = []
     if len(questions) != len(authored) or authored_exact != 405 or fallback: failures.append("authored coverage")
     if authored_digest != AUTHORED_SHA256: failures.append("authored checksum")
+    if glossary_authored_digest != GLOSSARY_AUTHORED_SHA256: failures.append("authored glossary checksum")
     if unresolved_wrong or unresolved_glossary: failures.append("content mappings")
     if legacy_sources: failures.append("legacy generated explanation source")
     if unchanged_stems != 405 or unchanged_options != 405: failures.append("official wording/options")
     if resolved_correct_ids != 405: failures.append("correct option IDs")
     if answer_audit["fuzzy"] or answer_audit["unresolved"]: failures.append("answer matching")
-    if identical_from_zero: failures.append("glossary beginner duplication")
+    if len(glossary) != 176 or glossary_exact != 176: failures.append("authored glossary coverage")
     if missing_assets or unresolved_requested_exam_figures: failures.append("assets")
     if not all(item["unchanged"] for item in source_files): failures.append("source PDF hash")
     report["failures"] = failures
@@ -161,7 +179,8 @@ Generated: reproducible
 - Official stems / option sets unchanged from `ContentRaw`: **{unchanged_stems}/405** / **{unchanged_options}/405**.
 - Resolved correct option IDs: **{resolved_correct_ids}/405**.
 - Answer matches exact / manual / fuzzy: **{answer_audit['exact']} / {answer_audit['manual']} / {answer_audit['fuzzy']}**.
-- Built-in glossary entries: **{len(glossary)}**; normalized `fromZero == shortDefinition`: **{len(identical_from_zero)}**.
+- Built-in glossary entries: **{len(glossary)}**; exact authored educational records: **{glossary_exact}**; normalized `fromZero == shortDefinition`: **{len(identical_from_zero)}**.
+- Glossary source: `{GLOSSARY_AUTHORED_PATH.relative_to(ROOT)}`; SHA-256 `{glossary_authored_digest}`.
 - Exam figures / teaching diagrams: **{len(original_assets)} / {len(teaching_assets)}**; missing assets: **{len(missing_assets)}**.
 
 ## Preserved source files
