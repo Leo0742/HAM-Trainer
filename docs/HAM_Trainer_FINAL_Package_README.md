@@ -15,7 +15,7 @@ ZIP, is the source of truth for application code and official exam-bank content.
 
 SHA-256:
 
-`d0f1a131f0495a1914f02a052e678bcbd471a6e1f884c0a5bc9f6a190b3c0253`
+`f069523c53b9f9e8658d01ee550335c5d8407486f93eab4979a58b9aa4e9975f`
 
 Coverage:
 
@@ -50,7 +50,7 @@ After successful integration, remove the app-side
 
 SHA-256:
 
-`f2b193c916ce5be64475e6e9cbb01a6f5348930fc4d51cfb494488ffff05bc4c`
+`2d3902bb049064066bc71766405237ab7ab39cc7b2b123de249700a1230bc1d3`
 
 Contains **176** concepts referenced by the final question explanations.
 

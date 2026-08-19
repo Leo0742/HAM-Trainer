@@ -215,9 +215,9 @@ TEACHING_DIAGRAMS = {
 }
 
 AUTHORED_PATH = ROOT / "ContentAuthored" / "second-category-405-explanations.json"
-AUTHORED_SHA256 = "d0f1a131f0495a1914f02a052e678bcbd471a6e1f884c0a5bc9f6a190b3c0253"
+AUTHORED_SHA256 = "f069523c53b9f9e8658d01ee550335c5d8407486f93eab4979a58b9aa4e9975f"
 GLOSSARY_AUTHORED_PATH = ROOT / "ContentAuthored" / "built-in-glossary-176.json"
-GLOSSARY_AUTHORED_SHA256 = "f2b193c916ce5be64475e6e9cbb01a6f5348930fc4d51cfb494488ffff05bc4c"
+GLOSSARY_AUTHORED_SHA256 = "2d3902bb049064066bc71766405237ab7ab39cc7b2b123de249700a1230bc1d3"
 EXPECTED_NUMBERS = set(range(1, 39)) | set(range(47, 99)) | set(range(100, 375)) | set(range(387, 427))
 AUTHORED_FIELDS = {
     "explanationShort", "explanationBeginner", "explanationReasoning",
