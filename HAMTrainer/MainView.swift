@@ -76,7 +76,7 @@ struct DashboardView: View {
 
     private func count(_ state: LearningState) -> Int { store.progress.values.count(where: { $0.state == state }) }
     private var unseen: Int { store.questions.count - store.progress.values.count(where: { $0.state != .unseen }) }
-    private var due: Int { store.progress.values.count(where: { ($0.nextDueAt ?? .distantFuture) <= Date() && $0.state != .mastered }) }
+    private var due: Int { store.questions.count(where: store.isDue) }
     private var accuracy: Int {
         let attempts = store.progress.values.reduce(0) { $0 + $1.correctCount + $1.incorrectCount + $1.dontKnowCount + $1.revealedCount }
         let correct = store.progress.values.reduce(0) { $0 + $1.correctCount }
@@ -98,7 +98,7 @@ struct DashboardView: View {
 
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 14)], spacing: 14) {
                     StatCard(title: "Освоено", value: count(.mastered), icon: "checkmark.seal.fill", tint: .green)
-                    StatCard(title: "Повторить сегодня", value: due, icon: "calendar.badge.clock", tint: .orange)
+                    StatCard(title: "Повторить сейчас", value: due, icon: "arrow.triangle.2.circlepath", tint: .orange)
                     StatCard(title: "Слабые", value: count(.weak), icon: "waveform.path.ecg", tint: .red)
                     StatCard(title: "Не изучены", value: unseen, icon: "circle.dashed", tint: .blue)
                     StatCard(title: "Точность", value: accuracy, suffix: "%", icon: "scope", tint: .purple)
@@ -108,7 +108,7 @@ struct DashboardView: View {
                     VStack(alignment: .leading, spacing: 14) {
                         HStack { Text("Путь к готовности").font(.headline); Spacer(); Text("\(count(.mastered)) / 405").monospacedDigit().foregroundStyle(.secondary) }
                         ProgressView(value: Double(count(.mastered)), total: 405).tint(.accentColor)
-                        Text("Освоенным вопрос становится только после нескольких успешных повторений, разделённых во времени.")
+                        Text("Освоенным вопрос становится после успешных повторений, разделённых другими карточками.")
                             .font(.callout).foregroundStyle(.secondary)
                     }.padding(8)
                 }
@@ -212,17 +212,47 @@ struct QuestionRow: View {
     }
 }
 
+enum QuestionBrowserFilter: String, CaseIterable, Identifiable {
+    case all, unseen, learning, weak, due, mastered, bookmarked, incorrectBefore, dontKnowBefore
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .all: "Все"
+        case .unseen: "Не изучены"
+        case .learning: "Изучение"
+        case .weak: "Слабые"
+        case .due: "Пора повторить"
+        case .mastered: "Освоены"
+        case .bookmarked: "Закладки"
+        case .incorrectBefore: "Были ошибки"
+        case .dontKnowBefore: "Было «Не знаю»"
+        }
+    }
+}
+
 struct QuestionBrowserView: View {
     @EnvironmentObject private var store: AppStore
     @State private var query = ""
-    @State private var stateFilter: LearningState?
+    @State private var stateFilter: QuestionBrowserFilter = .all
     @State private var selected: Question?
     @FocusState private var searchFocused: Bool
     private var filtered: [Question] {
         store.questions.filter { question in
-            let stateOK = stateFilter == nil || store.progressFor(question).state == stateFilter
+            let progress = store.progressFor(question)
+            let stateOK: Bool = switch stateFilter {
+            case .all: true
+            case .unseen: progress.state == .unseen
+            case .learning: progress.state == .learning || progress.state == .review
+            case .weak: progress.state == .weak || progress.manuallyMarkedHard
+            case .due: store.isDue(question)
+            case .mastered: progress.state == .mastered
+            case .bookmarked: progress.bookmarked
+            case .incorrectBefore: progress.incorrectCount > 0
+            case .dontKnowBefore: progress.dontKnowCount > 0
+            }
             guard stateOK, !query.isEmpty else { return stateOK }
-            let content = "\(question.examNumber) \(question.stem) \(question.options.map(\.text).joined(separator: " ")) \(question.explanationShort) \(question.topic)"
+            let terms = question.glossaryTerms.compactMap { id in store.glossary.first(where: { $0.id == id })?.term }.joined(separator: " ")
+            let content = "\(question.examNumber) \(question.stem) \(question.options.map(\.text).joined(separator: " ")) \(question.explanationShort) \(question.topic) \(terms) \(progress.note)"
             return content.localizedCaseInsensitiveContains(query)
         }
     }
@@ -232,9 +262,8 @@ struct QuestionBrowserView: View {
                 HStack {
                     TextField("Вопрос, ответ, тема или термин", text: $query).textFieldStyle(.roundedBorder).focused($searchFocused)
                     Picker("Состояние", selection: $stateFilter) {
-                        Text("Все").tag(LearningState?.none)
-                        ForEach(LearningState.allCases, id: \.self) { Text($0.title).tag(Optional($0)) }
-                    }.labelsHidden().frame(width: 140)
+                        ForEach(QuestionBrowserFilter.allCases) { Text($0.title).tag($0) }
+                    }.labelsHidden().frame(width: 175)
                 }.padding()
                 List(filtered, selection: $selected) { q in QuestionRow(question: q).tag(q) }
             }.navigationTitle("Все вопросы — \(filtered.count)")
@@ -261,31 +290,12 @@ struct QuestionDetailView: View {
                         .padding(10).frame(maxWidth: .infinity, alignment: .leading).background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
                 }
                 ExplanationView(question: question)
+                DisclosureGroup("Личная заметка") {
+                    QuestionNoteEditor(question: question)
+                }
                 SourceView(question: question)
             }.padding(28).frame(maxWidth: 850, alignment: .leading)
         }.background(Color(nsColor: .windowBackgroundColor))
-    }
-}
-
-struct GlossaryView: View {
-    @EnvironmentObject private var store: AppStore
-    @State private var query = ""
-    var entries: [GlossaryEntry] { store.glossary.filter { query.isEmpty || "\($0.term) \($0.aliases.joined(separator: " ")) \($0.shortDefinition)".localizedCaseInsensitiveContains(query) } }
-    var body: some View {
-        VStack(spacing: 0) {
-            TextField("Найти термин", text: $query).textFieldStyle(.roundedBorder).padding()
-            List(entries) { entry in
-                DisclosureGroup {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text(entry.fromZero)
-                        Label(entry.radioExample, systemImage: "radio").foregroundStyle(.secondary)
-                        Button("Я не понимаю этот термин") { store.markConceptWeak(entry.id) }
-                    }.padding(.vertical, 8)
-                } label: {
-                    VStack(alignment: .leading, spacing: 3) { Text(entry.term).font(.headline); Text(entry.shortDefinition).font(.callout).foregroundStyle(.secondary) }
-                }.padding(.vertical, 5)
-            }
-        }.navigationTitle("Словарь — \(entries.count)")
     }
 }
 
@@ -309,7 +319,7 @@ struct StatisticsView: View {
                 }
                 GroupBox("Результаты пробных экзаменов") {
                     if store.mockScores.isEmpty { Text("Экзамены ещё не проходились.").foregroundStyle(.secondary).padding() }
-                    else { ForEach(store.mockScores.reversed()) { score in HStack { Text(score.date.formatted(date: .abbreviated, time: .shortened)); Spacer(); Text("\(score.correct)/30").bold().foregroundStyle(score.passed ? .green : .red) }.padding(.vertical, 4) } }
+                    else { ForEach(store.mockScores.reversed()) { score in HStack { Text(score.date.formatted(date: .abbreviated, time: .shortened)); Text("отвечено: \(score.answered)").font(.caption).foregroundStyle(.secondary); Spacer(); Text("\(score.correct)/\(score.total)").bold().foregroundStyle(score.passed ? .green : .red) }.padding(.vertical, 4) } }
                 }
             }.padding(28).frame(maxWidth: 1000, alignment: .leading)
         }.navigationTitle("Статистика")
@@ -324,7 +334,6 @@ struct SettingsView: View {
             Section("Учёба") {
                 Picker("Длина сессии", selection: $store.settings.defaultSessionLength) { ForEach([10, 20, 30, 40], id: \.self) { Text("\($0)").tag($0) } }
                 Toggle("Перемешивать варианты ответов", isOn: $store.settings.randomizeOptions)
-                Toggle("Звуковые эффекты", isOn: $store.settings.soundEffects)
                 Picker("Объяснение", selection: $store.settings.explanationStyle) { Text("Кратко").tag("Кратко"); Text("С нуля").tag("С нуля"); Text("Подробно").tag("Подробно") }
             }
             Section("Резервная копия") {
@@ -336,7 +345,7 @@ struct SettingsView: View {
             }
             Section("Источник") {
                 LabeledContent("Банк", value: "405 вопросов, вторая категория")
-                LabeledContent("Версия схемы данных", value: "1")
+                LabeledContent("Версия схемы данных", value: "2")
                 Text("Официальный ответ банка и примечание для реальной практики хранятся отдельно.").font(.caption).foregroundStyle(.secondary)
             }
         }.formStyle(.grouped).navigationTitle("Настройки")

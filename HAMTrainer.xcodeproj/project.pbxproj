@@ -14,6 +14,7 @@
 		100000000000000000000006 /* SnapshotCaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000006 /* SnapshotCaptureView.swift */; };
 		100000000000000000000007 /* StudyViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000007 /* StudyViews.swift */; };
 		100000000000000000000008 /* Content in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000008 /* Content */; };
+		100000000000000000000009 /* GlossaryViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20000000000000000000000C /* GlossaryViews.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -28,6 +29,7 @@
 		200000000000000000000009 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		20000000000000000000000A /* HAM Trainer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "HAM Trainer.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		20000000000000000000000B /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
+		20000000000000000000000C /* GlossaryViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlossaryViews.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -54,6 +56,7 @@
 				200000000000000000000002 /* AppStore.swift */,
 				200000000000000000000004 /* MainView.swift */,
 				200000000000000000000007 /* StudyViews.swift */,
+				20000000000000000000000C /* GlossaryViews.swift */,
 				200000000000000000000006 /* SnapshotCaptureView.swift */,
 				200000000000000000000009 /* Info.plist */,
 			);
@@ -107,6 +110,7 @@
 			100000000000000000000005 /* Models.swift in Sources */,
 			100000000000000000000006 /* SnapshotCaptureView.swift in Sources */,
 			100000000000000000000007 /* StudyViews.swift in Sources */,
+			100000000000000000000009 /* GlossaryViews.swift in Sources */,
 		); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 
