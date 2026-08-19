@@ -16,10 +16,10 @@ Important fields:
 - `sourceReference` with both documents and pages;
 - optional `legalHistoricalNote`, separate from the official bank answer.
 
-`Content/glossary.json` contains a short definition, from-zero explanation, aliases, a real-radio example, and related-term IDs. `Content/topics.json` is a generated topic catalog. `Content/source-map.json` is a generated compact provenance index.
+`Content/glossary.json` contains a short definition, from-zero explanation, aliases, a real-radio example, related-term IDs, and an optional teaching diagram. `Content/topics.json` is a generated topic catalog. `Content/source-map.json` is a generated compact provenance index.
 
 Mutable fields such as attempts, notes, bookmarks, review stage, completed study step, next-due study step, concept state, and personal glossary entries are intentionally absent from content JSON and live in the progress store.
 
 ## Overrides
 
-`ContentRaw/questions-imported.json` is the immutable handoff from PDF extraction. `Tools/build_content.py` builds educational layers, then applies `ContentOverrides/question-overrides.json` last. Overrides are the right place for a stable correction, historical/practice note, mnemonic, or an explicitly resolved source ambiguity. Do not edit generated JSON for a correction that must survive the next import.
+`ContentRaw/questions-imported.json` is the immutable handoff from PDF extraction. `ContentOverrides/questions-*.json` contains an explicit six-field educational record for every question; these files, not fallback output, define curated coverage. `Tools/build_content.py` assembles those records and applies `ContentOverrides/question-overrides.json` last for source corrections, historical notes, and explicitly resolved ambiguities. Do not edit generated `Content/questions.json` for a correction that must survive the next import.
