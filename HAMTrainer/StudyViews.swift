@@ -23,7 +23,7 @@ struct SmartStudyView: View {
                     Button("Начать сессию") {
                         let cards = store.smartCards(length: length)
                         if cards.isEmpty { noRequiredReviews = true }
-                        else { session = StudySession(cards: cards) }
+                        else { session = StudySession(cards: cards, dynamicallyReconsidersSmartQueue: true) }
                     }.buttonStyle(.borderedProminent).controlSize(.large)
                     if noRequiredReviews {
                         ContentUnavailableView(
@@ -88,6 +88,9 @@ struct StudyRunnerView: View {
                     awaitingNext = false
                     lastOutcome = nil
                     session.advance()
+                    if session.dynamicallyReconsidersSmartQueue, session.smartRefreshLength > 0 {
+                        session.reconsiderSmartQueue(with: store.smartCards(length: session.smartRefreshLength))
+                    }
                 })
                 .id("\(question.id)-\(session.position)")
             }
@@ -109,7 +112,7 @@ struct StudyRunnerView: View {
     private func continueSmart() {
         let cards = store.smartCards(length: store.settings.defaultSessionLength)
         guard !cards.isEmpty else { onFinish(); return }
-        session = StudySession(cards: cards)
+        session = StudySession(cards: cards, dynamicallyReconsidersSmartQueue: true)
     }
 }
 

@@ -24,24 +24,35 @@ struct AdaptiveReviewScheduler: Sendable {
         case .correct:
             progress.correctCount += 1
             progress.consecutiveCorrect += 1
-            progress.successfulSpacedReviews += 1
+            let isFirstLearningAnswer = old.state == .unseen
+            let isDueSpacedReview = old.nextDueStudyStep.map { completedStudyStep >= $0 } ?? false
 
-            if old.state == .unseen {
+            if isFirstLearningAnswer {
                 progress.reviewStage = 0
-            } else {
-                progress.reviewStage = min(old.reviewStage + 1, Self.questionIntervals.count - 1)
-            }
-
-            let interval = Self.questionIntervals[progress.reviewStage]
-            progress.nextDueStudyStep = completedStudyStep + interval + 1
-
-            if progress.reviewStage == Self.questionIntervals.count - 1,
-               progress.successfulSpacedReviews >= 4 {
-                progress.state = .mastered
-            } else if old.state == .weak && progress.consecutiveCorrect < 2 {
-                progress.state = .weak
-            } else {
+                progress.nextDueStudyStep = completedStudyStep + Self.questionIntervals[0] + 1
                 progress.state = .review
+            } else if isDueSpacedReview {
+                progress.successfulSpacedReviews += 1
+                progress.reviewStage = min(old.reviewStage + 1, Self.questionIntervals.count - 1)
+                let interval = Self.questionIntervals[progress.reviewStage]
+                progress.nextDueStudyStep = completedStudyStep + interval + 1
+
+                if progress.reviewStage == Self.questionIntervals.count - 1,
+                   progress.successfulSpacedReviews >= 4 {
+                    progress.state = .mastered
+                } else if old.state == .weak && progress.consecutiveCorrect < 2 {
+                    progress.state = .weak
+                } else {
+                    progress.state = .review
+                }
+            } else {
+                // This answer is useful practice, but it is not a spaced review.
+                // Moving the due step by one prevents rapid repeats of this same
+                // question from counting as one of the required OTHER answers.
+                progress.reviewStage = old.reviewStage
+                progress.successfulSpacedReviews = old.successfulSpacedReviews
+                progress.nextDueStudyStep = old.nextDueStudyStep.map { $0 + 1 }
+                progress.state = old.state
             }
 
         case .incorrect, .dontKnow, .revealedBeforeAnswer:
@@ -92,7 +103,7 @@ struct AdaptiveReviewScheduler: Sendable {
             return StudyCard(question: question, reason: reason)
         }
 
-        let orderedReasons: [StudySelectionReason] = [.lapse, .weak, .new, .due]
+        let orderedReasons: [StudySelectionReason] = [.lapse, .weak, .due, .new]
         var result: [StudyCard] = []
         for reason in orderedReasons {
             let candidates = classified.filter { $0.reason == reason }.sorted {
@@ -119,8 +130,8 @@ struct AdaptiveReviewScheduler: Sendable {
         let reasonWeight: Double = switch card.reason {
         case .lapse: 600
         case .weak: 500
-        case .new: 400
-        case .due: 300
+        case .due: 400
+        case .new: 300
         case .maintenance: 100
         case .manuallySelected, .sessionMistake: 0
         }
@@ -150,10 +161,14 @@ struct StudySession: Sendable {
     private(set) var appearanceCounts: [String: Int] = [:]
     private(set) var summary = SessionSummary()
     let drillWeak: Bool
+    let dynamicallyReconsidersSmartQueue: Bool
+    private let targetAnswerCount: Int
 
-    init(cards: [StudyCard], drillWeak: Bool = false) {
+    init(cards: [StudyCard], drillWeak: Bool = false, dynamicallyReconsidersSmartQueue: Bool = false) {
         queue = cards
         self.drillWeak = drillWeak
+        self.dynamicallyReconsidersSmartQueue = dynamicallyReconsidersSmartQueue
+        targetAnswerCount = cards.count
     }
 
     init(questions: [Question], reason: StudySelectionReason = .manuallySelected, drillWeak: Bool = false) {
@@ -164,6 +179,7 @@ struct StudySession: Sendable {
     var currentQuestion: Question? { current?.question }
     var isComplete: Bool { index >= queue.count }
     var position: Int { min(index + 1, queue.count) }
+    var smartRefreshLength: Int { max(0, targetAnswerCount - index) }
 
     mutating func record(_ outcome: AttemptOutcome, previousState: LearningState, newState: LearningState) {
         guard let card = current else { return }
@@ -197,6 +213,17 @@ struct StudySession: Sendable {
     }
 
     mutating func advance() { index += 1 }
+
+    mutating func reconsiderSmartQueue(with candidates: [StudyCard]) {
+        guard dynamicallyReconsidersSmartQueue else { return }
+        let answeredPrefix = Array(queue.prefix(index))
+        let remaining = max(0, targetAnswerCount - answeredPrefix.count)
+        let appearanceLimit = drillWeak ? 3 : 2
+        let refreshed = candidates.filter {
+            appearanceCounts[$0.id, default: 0] < appearanceLimit
+        }
+        queue = answeredPrefix + Array(refreshed.prefix(remaining))
+    }
 
     mutating func markConceptUnclear(_ id: String) {
         if !summary.unclearConceptIDs.contains(id) { summary.unclearConceptIDs.append(id) }

@@ -44,6 +44,32 @@ struct CoreTestRunner {
         var tests: [(String, () throws -> Void)] = []
         let scheduler = AdaptiveReviewScheduler()
 
+        func answerAndRefresh(
+            _ outcome: AttemptOutcome,
+            session: inout StudySession,
+            bank: [Question],
+            progress: inout [String: QuestionProgress],
+            completedStudyStep: inout Int
+        ) throws -> String {
+            guard let card = session.current else { throw TestFailure.failed("Smart Study ended before the expected card") }
+            let previous = progress[card.id] ?? QuestionProgress(questionId: card.id)
+            completedStudyStep += 1
+            let updated = scheduler.applying(
+                outcome, to: previous, completedStudyStep: completedStudyStep, selectionReason: card.reason
+            )
+            progress[card.id] = updated
+            session.record(outcome, previousState: previous.state, newState: updated.state)
+            session.advance()
+            if session.dynamicallyReconsidersSmartQueue, session.smartRefreshLength > 0 {
+                let refreshed = scheduler.smartQueue(
+                    questions: bank, progress: progress,
+                    length: session.smartRefreshLength, completedStudyStep: completedStudyStep
+                )
+                session.reconsiderSmartQueue(with: refreshed)
+            }
+            return card.id
+        }
+
         tests.append(("wrong becomes due after five other answers", {
             let failed = scheduler.applying(.incorrect, to: QuestionProgress(questionId: "q"), completedStudyStep: 100)
             try expect(failed.nextDueStudyStep == 106, "wrong due step should be 106")
@@ -156,6 +182,120 @@ struct CoreTestRunner {
             let queue = scheduler.smartQueue(questions: [fresh, weak], progress: [weak.id: weakProgress], length: 2, completedStudyStep: 9)
             try expect(queue.map(\.id) == [weak.id, fresh.id], "new question outranked due weak question")
             try expect(queue.map(\.reason) == [.weak, .new], "selection reasons are not explicit")
+        }))
+
+        tests.append(("case A due card returns inside the same long Smart Study session", {
+            let bank = (1...30).map { sampleQuestion($0) }
+            var progress: [String: QuestionProgress] = [:]
+            var step = 0
+            let initial = scheduler.smartQueue(questions: bank, progress: progress, length: 20, completedStudyStep: step)
+            var session = StudySession(cards: initial, dynamicallyReconsidersSmartQueue: true)
+            var sequence: [String] = []
+            for _ in 0..<7 {
+                sequence.append(try answerAndRefresh(.correct, session: &session, bank: bank, progress: &progress, completedStudyStep: &step))
+            }
+            try expect(sequence == ["q-1", "q-2", "q-3", "q-4", "q-5", "q-6", "q-1"], "due Q1 did not return after five other cards: \(sequence)")
+        }))
+
+        tests.append(("case B and G normal due reviews outrank a large unseen bank", {
+            let due = sampleQuestion(1)
+            let unseen = (2...405).map { sampleQuestion($0) }
+            var dueProgress = QuestionProgress(questionId: due.id)
+            dueProgress.state = .review
+            dueProgress.reviewStage = 2
+            dueProgress.nextDueStudyStep = 101
+            let queue = scheduler.smartQueue(
+                questions: unseen + [due], progress: [due.id: dueProgress], length: 20, completedStudyStep: 100
+            )
+            try expect(queue.first?.id == due.id && queue.first?.reason == .due, "404 unseen cards starved a normal due review")
+        }))
+
+        tests.append(("case C early correct is practice only", {
+            var value = QuestionProgress(questionId: "q")
+            value.state = .review
+            value.reviewStage = 2
+            value.successfulSpacedReviews = 2
+            value.nextDueStudyStep = 100
+            let early = scheduler.applying(.correct, to: value, completedStudyStep: 82, selectionReason: .manuallySelected)
+            try expect(early.correctCount == 1 && early.attempts == 1, "early practice was not recorded")
+            try expect(early.reviewStage == 2 && early.successfulSpacedReviews == 2, "early practice advanced spaced-review progress")
+            try expect(early.nextDueStudyStep == 101, "same-question practice incorrectly counted as an OTHER answer")
+        }))
+
+        tests.append(("case D genuine due correct advances the stage", {
+            var value = QuestionProgress(questionId: "q")
+            value.state = .review
+            value.reviewStage = 2
+            value.successfulSpacedReviews = 2
+            value.nextDueStudyStep = 100
+            let due = scheduler.applying(.correct, to: value, completedStudyStep: 100, selectionReason: .due)
+            try expect(due.reviewStage == 3 && due.successfulSpacedReviews == 3, "due correct did not advance spaced-review progress")
+            try expect(due.nextDueStudyStep == 141, "stage 3 did not schedule forty other questions")
+        }))
+
+        tests.append(("case E and F failed card waits for five others then returns", {
+            let bank = (1...30).map { sampleQuestion($0) }
+            var progress: [String: QuestionProgress] = [:]
+            var step = 0
+            let initial = scheduler.smartQueue(questions: bank, progress: progress, length: 20, completedStudyStep: step)
+            var session = StudySession(cards: initial, dynamicallyReconsidersSmartQueue: true)
+            var sequence = [try answerAndRefresh(.incorrect, session: &session, bank: bank, progress: &progress, completedStudyStep: &step)]
+            for _ in 0..<6 {
+                sequence.append(try answerAndRefresh(.correct, session: &session, bank: bank, progress: &progress, completedStudyStep: &step))
+            }
+            try expect(Array(sequence.prefix(6)) == ["q-1", "q-2", "q-3", "q-4", "q-5", "q-6"], "failed card repeated before five other answers: \(sequence)")
+            try expect(sequence[6] == "q-1", "failed card did not return after five other answers: \(sequence)")
+        }))
+
+        tests.append(("case H rapid manual correct answers cannot create Mastered", {
+            var value = scheduler.applying(.correct, to: QuestionProgress(questionId: "q"), completedStudyStep: 1, selectionReason: .manuallySelected)
+            for step in 2...100 {
+                value = scheduler.applying(.correct, to: value, completedStudyStep: step, selectionReason: .manuallySelected)
+            }
+            try expect(value.correctCount == 100, "manual practice attempts were lost")
+            try expect(value.reviewStage == 0 && value.successfulSpacedReviews == 0, "rapid practice advanced spaced-review progress")
+            try expect(value.state != .mastered, "rapid manual practice created Mastered")
+            try expect(value.nextDueStudyStep == 106, "same-question answers were counted as other questions")
+        }))
+
+        tests.append(("500-answer Smart Study simulation prevents due starvation", {
+            let bank = (1...120).map { sampleQuestion($0, topic: "Тема \(($0 - 1) % 6)") }
+            var progress: [String: QuestionProgress] = [:]
+            var completed = 0
+            var failureStep: [String: Int] = [:]
+            var dueSelections = 0
+            var newSelections = 0
+            var maximumOverdue = 0
+
+            for answerNumber in 1...500 {
+                let dueNow = bank.filter {
+                    let value = progress[$0.id] ?? QuestionProgress(questionId: $0.id)
+                    return value.state != .mastered && scheduler.isDue(value, completedStudyStep: completed)
+                }
+                let queue = scheduler.smartQueue(questions: bank, progress: progress, length: 20, completedStudyStep: completed)
+                guard let card = queue.first else { throw TestFailure.failed("simulation ran out of eligible cards at answer \(answerNumber)") }
+                if !dueNow.isEmpty {
+                    try expect(dueNow.contains(where: { $0.id == card.id }), "an unseen card was selected while a non-mastered review was due")
+                    dueSelections += 1
+                } else if card.reason == .new {
+                    newSelections += 1
+                }
+                if let failedAt = failureStep[card.id] {
+                    try expect(completed - failedAt >= 5, "failed card returned before five other answers")
+                    failureStep[card.id] = nil
+                }
+                let previous = progress[card.id] ?? QuestionProgress(questionId: card.id)
+                if let due = previous.nextDueStudyStep {
+                    maximumOverdue = max(maximumOverdue, max(0, completed + 1 - due))
+                }
+                completed += 1
+                let outcome: AttemptOutcome = answerNumber.isMultiple(of: 37) ? .incorrect : .correct
+                progress[card.id] = scheduler.applying(outcome, to: previous, completedStudyStep: completed, selectionReason: card.reason)
+                if outcome.isFailure { failureStep[card.id] = completed }
+            }
+            print("SIMULATION 500 answers; due selections=\(dueSelections); new selections=\(newSelections); max overdue=\(maximumOverdue)")
+            try expect(dueSelections > 300 && newSelections > 0, "simulation did not exercise both due and new selection paths")
+            try expect(maximumOverdue < 120, "a due review was effectively starved")
         }))
 
         tests.append(("requested length does not override eligibility", {
