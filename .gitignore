@@ -1,4 +1,6 @@
 .DS_Store
+__pycache__/
+*.pyc
 .build/
 .swiftpm/
 Build/
@@ -6,6 +8,5 @@ DerivedData/
 *.xcuserstate
 xcuserdata/
 
-# Source documents and rendered source pages stay local.
-*.pdf
-Content/diagrams/*.png
+# The two audited source PDFs and the required study figures are intentionally
+# versioned. Build products and caches remain local.

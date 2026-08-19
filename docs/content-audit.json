@@ -1,0 +1,69 @@
+{
+  "generatedOn": "2026-08-19",
+  "questions": {
+    "total": 405,
+    "uniqueExamNumbers": 405,
+    "topics": 19,
+    "withBeginnerExplanation": 405,
+    "withReasoningExplanation": 405,
+    "withCompleteWrongOptionExplanations": 405,
+    "withSourceReferences": 405,
+    "withGlossaryLinks": 405,
+    "figureQuestions": 24,
+    "figureAssets": 24,
+    "uniqueShortExplanations": 401
+  },
+  "glossary": {
+    "entries": 142,
+    "withDefinitions": 142,
+    "withExamples": 142,
+    "withRelatedTerms": 110,
+    "unresolvedReferences": 0
+  },
+  "legacyGenericTemplateMatches": 0,
+  "missingSourceReferences": 0,
+  "validationFailures": [],
+  "manualFollowUp": [
+    {
+      "questions": [
+        156,
+        159
+      ],
+      "reason": "The source guide reuses the same short explanation; confirm the shared rule is intentional."
+    },
+    {
+      "questions": [
+        221,
+        222
+      ],
+      "reason": "The source guide reuses the same short explanation; confirm the shared rule is intentional."
+    },
+    {
+      "questions": [
+        267,
+        268
+      ],
+      "reason": "The source guide reuses the same short explanation; confirm the shared rule is intentional."
+    },
+    {
+      "questions": [
+        312,
+        313
+      ],
+      "reason": "The source guide reuses the same short explanation; confirm the shared rule is intentional."
+    }
+  ],
+  "sourceFiles": [
+    {
+      "file": "Справочник_КЭ.pdf",
+      "bytes": 1397332,
+      "sha256": "8108c82eb316069167a7ae3e525a9991637e2f547f12fbbde637e684dbad55d7"
+    },
+    {
+      "file": "radiolyubitel_2_category_guide_2026.pdf",
+      "bytes": 3652891,
+      "sha256": "163c01bded0c4b5cee92892948f15eab32b226f6f0bd0edc70f0beecd6317749"
+    }
+  ],
+  "method": "Structural checks cover every item. Educational text is deterministic and question-specific; manual follow-up flags duplicated source-guide explanations, not presumed factual errors."
+}

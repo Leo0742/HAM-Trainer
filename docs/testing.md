@@ -1,35 +1,34 @@
-# Testing and visual verification
+# Testing and verification
 
-## Automated tests
+`Tools/run_tests.sh` компилирует production‑модели, планировщик и хранилище напрямую в нативный тестовый runner без сторонних зависимостей. На текущем окружении выбирается совместимый macOS 15.4 SDK, если установленный latest SDK новее версии Swift compiler.
 
-Run `Tools/run_tests.sh`. It compiles the production model, scheduler, session, and persistence files directly into a native arm64 test executable. The installed Command Line Tools package lacks XCTest and Swift Testing, so the runner deliberately has no testing-framework dependency.
+28 проверок покрывают:
 
-The ten core tests cover:
+- точные дистанции 5/10/20/40/80 и запрет раннего показа;
+- ошибки, «Не знаю», показ ответа, срыв освоения и восстановление;
+- сохранение `studyStep` после перезапуска и между сессиями;
+- отсутствие неготового освоенного fallback, причины выбора и лимит maintenance;
+- минимальный разрыв и лимиты повторов, включая слишком короткую сессию;
+- сохранение правильного option ID после перемешивания;
+- 30 уникальных вопросов, порог 25/30 и отдельные incorrect/unanswered;
+- заметки, закладки, состояния понятий, персональный глоссарий и полный backup round trip;
+- защиту текущих данных от повреждённого импорта;
+- итог сессии, происхождение контента, ссылки глоссария и отсутствие старого boilerplate во всех 405 объяснениях.
 
-1. failed items do not repeat immediately;
-2. normal sessions cap repeat appearances;
-3. correct spaced reviews expand intervals and eventually master;
-4. a lapse removes mastery;
-5. weak items recover after successful reviews;
-6. “Не знаю” and reveal-before-answer are distinct failures;
-7. mastered maintenance remains rare;
-8. mock exams contain 30 unique bank questions and use 25/30;
-9. progress survives restart and export/import;
-10. the decoded content bank satisfies integrity rules.
+`Tools/validate_content.py` отдельно проверяет диапазоны, стабильные ID, варианты, правильные ответы, все учебные слои, разбор каждого неверного варианта, 142 термина, ссылки на источники и наличие всех 24 схем. `Tools/audit_content.py` создаёт `docs/content-audit.json` и `docs/content-audit.md`, включая честный список мест для предметной ручной проверки.
 
-`Tools/validate_content.py` independently fails on an incorrect count/range, duplicate IDs, missing choices, invalid correct option IDs, missing topics/explanations, or missing figures.
+Последний результат: **28/28 тестов**, **405 вопросов**, **142 термина**, **24 схемы**, **0 совпадений со старым generic template**.
 
-Latest result: **10/10 core tests passed; content integrity OK: 405 questions.** The release binary is arm64 Mach-O, and the final application passes `codesign --verify --deep --strict` with an ad-hoc local signature.
+## Ручная UI-проверка
 
-## Visual QA
+Release‑пакет был реально запущен через macOS LaunchServices. Встроенный inert snapshot hook затем отрисовал те же production SwiftUI views для повторяемой проверки:
 
-The release application was launched through macOS LaunchServices. The system's accessibility screenshot service crashed when reading this SwiftUI window, so an inert `--snapshot` production-view hook was used for deterministic visual QA. It renders the exact application views and does nothing in ordinary launches.
+- dashboard первого запуска, 1180×780, light;
+- Smart Study, 860×620, dark;
+- словарь и пустые состояния, 860×620, light;
+- длинный вопрос №406 со схемой, 900×620, light;
+- вопрос №407 с четырьмя осциллограммами, 1180×900, dark.
 
-Inspected snapshots:
+Проверены перенос длинного русского текста, вертикальная прокрутка, контраст, адаптивные карточки, отсутствие горизонтальной прокрутки и читаемость обрезанных source figures. Снимки лежат в `docs/screenshots/`.
 
-- 1180×780 light dashboard;
-- 900×620 dark Smart Study;
-- 900×620 light long legal/procedural question;
-- 1180×900 dark diagram question with a large source figure.
-
-The first forced-appearance snapshot revealed stale appearance colors. The root snapshot scheme and adaptive answer-card fills were corrected, rebuilt, and rerendered. Final inspection found readable hierarchy, wrapped long text, adaptive colors, visible scrollbars, non-clipped controls, and legible figures.
+Попытка accessibility‑управления окном через Computer Use дважды завершилась закрытием нативного AX‑канала именно на запросе SwiftUI‑дерева. Поэтому полный click-through всех десяти сценариев не заявляется: их состояние и переходы проверены 28 нативными сценарными тестами, а production UI — реальным запуском и визуальными снимками.
