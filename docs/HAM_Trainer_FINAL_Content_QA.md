@@ -8,9 +8,9 @@ This report accompanies the final static educational-content package for the
 ## Files
 
 - `HAM_Trainer_Second_Category_405_Authored_Explanations_FINAL.json`
-  - SHA-256: `d0f1a131f0495a1914f02a052e678bcbd471a6e1f884c0a5bc9f6a190b3c0253`
+  - SHA-256: `f069523c53b9f9e8658d01ee550335c5d8407486f93eab4979a58b9aa4e9975f`
 - `HAM_Trainer_BuiltIn_Glossary_Content_FINAL.json`
-  - SHA-256: `f2b193c916ce5be64475e6e9cbb01a6f5348930fc4d51cfb494488ffff05bc4c`
+  - SHA-256: `2d3902bb049064066bc71766405237ab7ab39cc7b2b123de249700a1230bc1d3`
 
 Source-reference PDFs used during the audit:
 

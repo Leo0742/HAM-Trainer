@@ -13,9 +13,9 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTENT = ROOT / "Content"
 DOCS = ROOT / "docs"
 AUTHORED_PATH = ROOT / "ContentAuthored" / "second-category-405-explanations.json"
-AUTHORED_SHA256 = "d0f1a131f0495a1914f02a052e678bcbd471a6e1f884c0a5bc9f6a190b3c0253"
+AUTHORED_SHA256 = "f069523c53b9f9e8658d01ee550335c5d8407486f93eab4979a58b9aa4e9975f"
 GLOSSARY_AUTHORED_PATH = ROOT / "ContentAuthored" / "built-in-glossary-176.json"
-GLOSSARY_AUTHORED_SHA256 = "f2b193c916ce5be64475e6e9cbb01a6f5348930fc4d51cfb494488ffff05bc4c"
+GLOSSARY_AUTHORED_SHA256 = "2d3902bb049064066bc71766405237ab7ab39cc7b2b123de249700a1230bc1d3"
 EXPECTED_SOURCE_HASHES = {
     "Справочник_КЭ.pdf": "8108c82eb316069167a7ae3e525a9991637e2f547f12fbbde637e684dbad55d7",
     "radiolyubitel_2_category_guide_2026.pdf": "163c01bded0c4b5cee92892948f15eab32b226f6f0bd0edc70f0beecd6317749",
