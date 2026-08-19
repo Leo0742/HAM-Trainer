@@ -1,0 +1,11 @@
+.DS_Store
+.build/
+.swiftpm/
+Build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# Source documents and rendered source pages stay local.
+*.pdf
+Content/diagrams/*.png
