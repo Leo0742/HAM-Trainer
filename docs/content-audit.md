@@ -9,7 +9,7 @@ Generated: reproducible
 - Fallback-generated educational records: **0**.
 - Unresolved wrong-option mappings: **0**.
 - Unresolved glossary mappings: **0**.
-- Source: `ContentAuthored/second-category-405-explanations.json`; SHA-256 `bbbbb344bc8f770a135bb380b7e8bd341ee1d4986d17f4ac502f4fdfd07159f8`.
+- Source: `ContentAuthored/second-category-405-explanations.json`; SHA-256 `d0f1a131f0495a1914f02a052e678bcbd471a6e1f884c0a5bc9f6a190b3c0253`.
 
 “Authored” means an exact record in the immutable checksum-verified source file. The audit does not assign an automated educational-quality score.
 
@@ -18,7 +18,8 @@ Generated: reproducible
 - Official stems / option sets unchanged from `ContentRaw`: **405/405** / **405/405**.
 - Resolved correct option IDs: **405/405**.
 - Answer matches exact / manual / fuzzy: **400 / 5 / 0**.
-- Built-in glossary entries: **165**; normalized `fromZero == shortDefinition`: **0**.
+- Built-in glossary entries: **176**; exact authored educational records: **176**; normalized `fromZero == shortDefinition`: **5**.
+- Glossary source: `ContentAuthored/built-in-glossary-176.json`; SHA-256 `f2b193c916ce5be64475e6e9cbb01a6f5348930fc4d51cfb494488ffff05bc4c`.
 - Exam figures / teaching diagrams: **26 / 9**; missing assets: **0**.
 
 ## Preserved source files

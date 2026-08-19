@@ -2,7 +2,34 @@ import SwiftUI
 
 @main
 struct HAMTrainerApp: App {
-    @StateObject private var store = AppStore()
+    @StateObject private var store: AppStore
+
+    init() {
+        let arguments = CommandLine.arguments
+        let snapshot = arguments.contains("--snapshot")
+        let persistenceURL: URL? = snapshot
+            ? FileManager.default.temporaryDirectory.appendingPathComponent("HAMTrainer-visual-qa.json")
+            : nil
+        if let persistenceURL { try? FileManager.default.removeItem(at: persistenceURL) }
+        let value = AppStore(persistenceURL: persistenceURL)
+        if let index = arguments.firstIndex(of: "--text-size"), arguments.indices.contains(index + 1) {
+            value.settings.readingSize = switch arguments[index + 1] {
+            case "regular": .regular
+            case "extra-large": .extraLarge
+            default: .large
+            }
+        }
+        if let index = arguments.firstIndex(of: "--snapshot-mode"), arguments.indices.contains(index + 1),
+           arguments[index + 1] == "weak-populated" {
+            for number in [342, 347] {
+                if let question = value.questions.first(where: { $0.examNumber == number }) {
+                    _ = value.record(.incorrect, for: question, reason: .manuallySelected)
+                    value.toggleHard(question)
+                }
+            }
+        }
+        _store = StateObject(wrappedValue: value)
+    }
 
     var body: some Scene {
         WindowGroup("HAM Trainer") {
@@ -41,12 +68,52 @@ struct SnapshotRootView: View {
         guard let index = CommandLine.arguments.firstIndex(of: "--appearance"), CommandLine.arguments.indices.contains(index + 1) else { return nil }
         return CommandLine.arguments[index + 1] == "dark" ? .dark : .light
     }
+    private var snapshotMode: String? {
+        guard let index = CommandLine.arguments.firstIndex(of: "--snapshot-mode"), CommandLine.arguments.indices.contains(index + 1) else { return nil }
+        return CommandLine.arguments[index + 1]
+    }
     var body: some View {
         Group {
-            if let snapshotQuestion { QuestionDetailView(question: snapshotQuestion) }
+            if let snapshotMode, snapshotMode.hasPrefix("study-") { StudySnapshotView(mode: snapshotMode) }
+            else if snapshotMode == "personal-editor" {
+                ZStack {
+                    Color(nsColor: .windowBackgroundColor).ignoresSafeArea()
+                    PersonalGlossaryEditor(entry: PersonalGlossaryEntry(term: "Балун", shortDefinition: "Согласующее устройство"), isNew: true)
+                        .frame(width: 680, height: 640)
+                }
+            }
+            else if let snapshotQuestion { QuestionDetailView(question: snapshotQuestion) }
             else if let snapshotGlossary { GlossaryCard(entry: snapshotGlossary) }
             else { MainView() }
-        }.preferredColorScheme(snapshotColorScheme).background(SnapshotCaptureView())
+        }
+        .preferredColorScheme(snapshotColorScheme)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .background(SnapshotCaptureView())
+    }
+}
+
+private struct StudySnapshotView: View {
+    @EnvironmentObject private var store: AppStore
+    let mode: String
+    @State private var session: StudySession?
+
+    var body: some View {
+        Group {
+            if let session { StudyRunnerView(session: session, onFinish: {}) }
+            else { ProgressView().task { prepare() } }
+        }.background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    private func prepare() {
+        guard let first = store.questions.first(where: { $0.examNumber == 347 }),
+              let second = store.questions.first(where: { $0.examNumber == 57 }) else { return }
+        var value = StudySession(questions: [first, second], randomizeOptions: false)
+        if mode != "study-question" {
+            let selected = mode == "study-answered" ? first.correctOptionId : first.options.first(where: { $0.id != first.correctOptionId })?.id
+            value.record(mode == "study-answered" ? .correct : .incorrect, selectedOptionId: selected, previousState: .unseen, newState: .learning)
+        }
+        if mode == "study-history" { value.advance(); value.goBack() }
+        session = value
     }
 }
 

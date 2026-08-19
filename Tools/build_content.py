@@ -215,7 +215,9 @@ TEACHING_DIAGRAMS = {
 }
 
 AUTHORED_PATH = ROOT / "ContentAuthored" / "second-category-405-explanations.json"
-AUTHORED_SHA256 = "bbbbb344bc8f770a135bb380b7e8bd341ee1d4986d17f4ac502f4fdfd07159f8"
+AUTHORED_SHA256 = "d0f1a131f0495a1914f02a052e678bcbd471a6e1f884c0a5bc9f6a190b3c0253"
+GLOSSARY_AUTHORED_PATH = ROOT / "ContentAuthored" / "built-in-glossary-176.json"
+GLOSSARY_AUTHORED_SHA256 = "f2b193c916ce5be64475e6e9cbb01a6f5348930fc4d51cfb494488ffff05bc4c"
 EXPECTED_NUMBERS = set(range(1, 39)) | set(range(47, 99)) | set(range(100, 375)) | set(range(387, 427))
 AUTHORED_FIELDS = {
     "explanationShort", "explanationBeginner", "explanationReasoning",
@@ -227,18 +229,9 @@ AUTHORED_FIELDS = {
 WRONG_OPTION_TEXT_BINDINGS = {
     (23, "RL3DX"): "q-023-option-4",
     (32, "Лицензию HAREC."): "q-032-option-4",
+    (408, "Для измерения текущего значения выходной мощности."): "q-408-option-4",
+    (419, "Только углекислотные огнетушители."): "q-419-option-4",
     (426, "14 МГц."): "q-426-option-4",
-}
-
-# Four supplied records accidentally place the correct answer inside the
-# wrong-option dictionary and omit one real distractor. The immutable source is
-# preserved byte-for-byte; the exact authored short explanation is used for the
-# source-checked missing distractor because it directly states the distinction.
-WRONG_OPTION_AUTHORED_REPAIRS = {
-    96: "q-096-option-1",
-    123: "q-123-option-4",
-    188: "q-188-option-3",
-    214: "q-214-option-1",
 }
 
 GLOSSARY_TERM_BINDINGS = {
@@ -286,30 +279,64 @@ def normalize(value: str) -> str:
     # Join line-wrap hyphenation such as "No- vice" and "HA- REC".
     value = re.sub(r"(?<=[a-zа-я])-\s+(?=[a-zа-я])", "", value)
     value = re.sub(r"\s+", " ", value).strip()
+    value = re.sub(r"\s+([,.;:!?])", r"\1", value)
     return value.rstrip(" .;:!?")
 
 
-def from_zero(term: str, definition: str, example: str) -> str:
-    return (
-        f"Сначала представьте практическую ситуацию: {example} "
-        f"Именно в ней проявляется понятие «{term}»: {definition}"
-    )
-
-
-def glossary() -> list[dict]:
-    return [
-        {
+def glossary_identity_index() -> dict[str, dict]:
+    """Return legacy identity/presentation metadata without educational prose."""
+    index: dict[str, dict] = {}
+    for item_id, term, aliases, _definition, _example in TERM_DATA:
+        metadata = {
             "id": item_id,
-            "term": term,
             "aliases": aliases.split("|") if aliases else [],
-            "shortDefinition": definition,
-            "fromZero": from_zero(term, definition, example),
-            "radioExample": example,
-            "relatedTerms": [],
             "diagramAsset": TEACHING_DIAGRAMS.get(item_id),
         }
-        for item_id, term, aliases, definition, example in TERM_DATA
-    ]
+        # Match only the legacy canonical term. Several former aliases are now
+        # first-class authored concepts and must receive their own identity.
+        index[normalize(term)] = metadata
+    return index
+
+
+def authored_id(term: str) -> str:
+    """Create a deterministic ID for a concept absent from the legacy glossary."""
+    digest = hashlib.sha256(normalize(term).encode("utf-8")).hexdigest()[:12]
+    return f"authored-{digest}"
+
+
+def load_glossary_authored() -> list[dict]:
+    glossary_bytes = GLOSSARY_AUTHORED_PATH.read_bytes()
+    digest = hashlib.sha256(glossary_bytes).hexdigest()
+    if digest != GLOSSARY_AUTHORED_SHA256:
+        raise ValueError(f"authored glossary checksum mismatch: {digest}")
+    payload = json.loads(glossary_bytes)
+    records = payload.get("entries", [])
+    if payload.get("entryCount") != 176 or len(records) != 176:
+        raise ValueError(f"authored glossary coverage mismatch: {len(records)}")
+
+    identities = glossary_identity_index()
+    canonical_terms = {normalize(record["term"]) for record in records}
+    entries = []
+    for record in records:
+        for field in ("term", "shortDefinition", "fromZero", "radioExample"):
+            if not record.get(field, "").strip():
+                raise ValueError(f"authored glossary missing {field}: {record.get('term')!r}")
+        identity = identities.get(normalize(record["term"]))
+        aliases = identity["aliases"] if identity else []
+        aliases = [alias for alias in aliases if normalize(alias) not in canonical_terms]
+        entries.append({
+            "id": identity["id"] if identity else authored_id(record["term"]),
+            "term": record["term"],
+            "aliases": aliases,
+            "shortDefinition": record["shortDefinition"],
+            "fromZero": record["fromZero"],
+            "radioExample": record["radioExample"],
+            "relatedTerms": [],
+            "diagramAsset": identity["diagramAsset"] if identity else None,
+        })
+    if len({entry["id"] for entry in entries}) != 176:
+        raise ValueError("authored glossary generated duplicate stable IDs")
+    return entries
 
 
 def load_authored() -> dict[str, dict]:
@@ -375,15 +402,7 @@ def bind_wrong_options(question: dict, record: dict) -> dict[str, str]:
         else:
             unmatched_texts.append(text)
 
-    repair_id = WRONG_OPTION_AUTHORED_REPAIRS.get(number)
-    if repair_id:
-        correct_text = next(option["text"] for option in question["options"] if option["id"] == question["correctOptionId"])
-        if len(unmatched_texts) != 1 or normalize(unmatched_texts[0]) != normalize(correct_text):
-            raise ValueError(f"question {number}: unexpected authored wrong-option keys {unmatched_texts}")
-        if repair_id not in {option["id"] for option in wrong_options}:
-            raise ValueError(f"question {number}: invalid source-checked repair target {repair_id}")
-        bound[repair_id] = record["explanationShort"]
-    elif unmatched_texts:
+    if unmatched_texts:
         raise ValueError(f"question {number}: unmatched authored wrong-option text {unmatched_texts}")
 
     expected = {option["id"] for option in wrong_options}
@@ -420,7 +439,7 @@ def apply_authored(question: dict, record: dict, entries: list[dict]) -> dict:
 def main() -> None:
     raw_path = ROOT / "ContentRaw" / "questions-imported.json"
     raw = json.loads(raw_path.read_text(encoding="utf-8"))
-    entries = glossary()
+    entries = load_glossary_authored()
     authored = load_authored()
     overrides_path = ROOT / "ContentOverrides" / "question-overrides.json"
     overrides = json.loads(overrides_path.read_text(encoding="utf-8")).get("questions", {}) if overrides_path.exists() else {}

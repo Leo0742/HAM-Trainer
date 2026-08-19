@@ -23,7 +23,7 @@ struct SmartStudyView: View {
                     Button("Начать сессию") {
                         let cards = store.smartCards(length: length)
                         if cards.isEmpty { noRequiredReviews = true }
-                        else { session = StudySession(cards: cards, dynamicallyReconsidersSmartQueue: true) }
+                        else { session = StudySession(cards: cards, dynamicallyReconsidersSmartQueue: true, randomizeOptions: store.settings.randomizeOptions) }
                     }.buttonStyle(.borderedProminent).controlSize(.large)
                     if noRequiredReviews {
                         ContentUnavailableView(
@@ -47,9 +47,6 @@ struct SmartStudyView: View {
 struct StudyRunnerView: View {
     @EnvironmentObject private var store: AppStore
     @State private var session: StudySession
-    @State private var awaitingNext = false
-    @State private var lastOutcome: AttemptOutcome?
-    @State private var previousState: LearningState?
     let onFinish: () -> Void
 
     init(session: StudySession, onFinish: @escaping () -> Void) {
@@ -66,33 +63,41 @@ struct StudyRunnerView: View {
                 onContinueSmart: continueSmart,
                 onClose: onFinish
             )
-        } else if let card = session.current {
+        } else if let occurrence = session.currentOccurrence {
+            let card = occurrence.card
             let question = card.question
             VStack(spacing: 0) {
                 HStack {
+                    Button { session.goBack() } label: { Image(systemName: "chevron.backward") }
+                        .buttonStyle(.borderless).disabled(!session.canGoBack).help("Назад по истории сессии")
+                    Button { session.goForward() } label: { Image(systemName: "chevron.forward") }
+                        .buttonStyle(.borderless).disabled(!session.canGoForward).help("Вперёд по истории сессии")
                     Text("\(session.position) из \(session.queue.count)").monospacedDigit().foregroundStyle(.secondary)
                     ProgressView(value: Double(session.position - 1), total: Double(max(1, session.queue.count))).frame(maxWidth: 360)
                     Spacer()
+                    if session.totalRounds > 1 {
+                        Text("Круг \(session.currentRound) из \(session.totalRounds)").font(.caption.bold()).padding(.horizontal, 9).padding(.vertical, 5).background(.quaternary, in: Capsule())
+                    }
+                    if session.isViewingHistory {
+                        Button("К текущему") { session.returnToFrontier() }.buttonStyle(.borderless)
+                    }
                     Text(store.progressFor(question).state.title).font(.caption).padding(.horizontal, 9).padding(.vertical, 5).background(.quaternary, in: Capsule())
                     Button("Завершить") { onFinish() }.buttonStyle(.borderless)
                 }.padding(.horizontal, 24).padding(.vertical, 12).background(.bar)
 
-                QuestionInteractionView(question: question, awaitingNext: $awaitingNext, onOutcome: { outcome in
-                    previousState = store.progressFor(question).state
+                QuestionInteractionView(occurrence: occurrence, isHistorical: session.isViewingHistory, onOutcome: { outcome, optionId in
+                    let previousState = store.progressFor(question).state
                     let updated = store.record(outcome, for: question, reason: card.reason)
-                    session.record(outcome, previousState: previousState ?? .unseen, newState: updated.state)
-                    lastOutcome = outcome
+                    session.record(outcome, selectedOptionId: optionId, previousState: previousState, newState: updated.state)
                 }, onConceptUnclear: { id in
                     session.markConceptUnclear(id)
                 }, onNext: {
-                    awaitingNext = false
-                    lastOutcome = nil
                     session.advance()
                     if session.dynamicallyReconsidersSmartQueue, session.smartRefreshLength > 0 {
                         session.reconsiderSmartQueue(with: store.smartCards(length: session.smartRefreshLength))
                     }
                 })
-                .id("\(question.id)-\(session.position)")
+                .id(occurrence.id)
             }
         }
     }
@@ -100,36 +105,37 @@ struct StudyRunnerView: View {
     private func reviewMistakes() {
         let questions = store.questions(for: session.summary.mistakeQuestionIDs).shuffled()
         guard !questions.isEmpty else { return }
-        session = StudySession(questions: questions, reason: .sessionMistake)
+        session = StudySession(questions: questions, reason: .sessionMistake, randomizeOptions: store.settings.randomizeOptions)
     }
 
     private func reviewWeak() {
         let questions = store.questions.filter { let value = store.progressFor($0); return value.state == .weak || value.manuallyMarkedHard }
         guard !questions.isEmpty else { return }
-        session = StudySession(questions: questions, drillWeak: true)
+        session = StudySession(questions: questions, drillWeak: true, randomizeOptions: store.settings.randomizeOptions)
     }
 
     private func continueSmart() {
         let cards = store.smartCards(length: store.settings.defaultSessionLength)
         guard !cards.isEmpty else { onFinish(); return }
-        session = StudySession(cards: cards, dynamicallyReconsidersSmartQueue: true)
+        session = StudySession(cards: cards, dynamicallyReconsidersSmartQueue: true, randomizeOptions: store.settings.randomizeOptions)
     }
 }
 
 struct QuestionInteractionView: View {
     @EnvironmentObject private var store: AppStore
-    let question: Question
-    @Binding var awaitingNext: Bool
-    let onOutcome: (AttemptOutcome) -> Void
+    let occurrence: StudyOccurrence
+    let isHistorical: Bool
+    let onOutcome: (AttemptOutcome, String?) -> Void
     let onConceptUnclear: (String) -> Void
     let onNext: () -> Void
-    @State private var displayedOptions: [QuestionOption] = []
-    @State private var selectedOptionId: String?
-    @State private var outcome: AttemptOutcome?
-    @State private var showExplanation = false
     @State private var selectedGlossary: GlossaryEntry?
     @State private var note = ""
     @State private var personalDraft: PersonalGlossaryEntry?
+    private var reading: ReadingSize { store.settings.readingSize }
+    private var question: Question { occurrence.card.question }
+    private var displayedOptions: [QuestionOption] { occurrence.displayedOptions }
+    private var selectedOptionId: String? { occurrence.selectedOptionId }
+    private var outcome: AttemptOutcome? { occurrence.outcome }
 
     var body: some View {
         ScrollView {
@@ -143,8 +149,9 @@ struct QuestionInteractionView: View {
                     Button { store.toggleHard(question) } label: { Label("Сложный", systemImage: store.progressFor(question).manuallyMarkedHard ? "flame.fill" : "flame") }
                     Button { personalDraft = PersonalGlossaryEntry(term: "", relatedQuestionIDs: [question.id]) } label: { Label("В мой словарь", systemImage: "plus.rectangle.on.rectangle") }
                 }
-                Text(question.stem).font(.system(size: 22, weight: .semibold)).textSelection(.enabled)
+                Text(question.stem).font(.system(size: reading.questionFontSize, weight: .semibold)).textSelection(.enabled)
                 FigureView(asset: question.figureAsset)
+                if question.teachingDiagramAsset != question.figureAsset { FigureView(asset: question.teachingDiagramAsset) }
 
                 VStack(spacing: 10) {
                     ForEach(Array(displayedOptions.enumerated()), id: \.element.id) { index, option in
@@ -163,17 +170,18 @@ struct QuestionInteractionView: View {
                     }
                 } else {
                     FeedbackBanner(outcome: outcome!, question: question)
-                    if showExplanation { ExplanationView(question: question, selectedOptionId: selectedOptionId, onGlossary: { selectedGlossary = $0 }) }
+                    ExplanationView(question: question, selectedOptionId: selectedOptionId, onGlossary: { selectedGlossary = $0 })
                     MistakeReasonBar(question: question, visible: outcome != .correct)
                     notes
-                    Button("Следующий вопрос") { onNext() }
-                        .buttonStyle(.borderedProminent).controlSize(.large).keyboardShortcut(.return, modifiers: [])
+                    if !isHistorical {
+                        Button("Следующий вопрос") { onNext() }
+                            .buttonStyle(.borderedProminent).controlSize(.large).keyboardShortcut(.return, modifiers: [])
+                    }
                 }
                 SourceView(question: question)
-            }.padding(28).frame(maxWidth: 900, alignment: .leading)
+            }.padding(28).frame(maxWidth: reading.contentMaxWidth, alignment: .leading)
         }
         .onAppear {
-            displayedOptions = store.settings.randomizeOptions ? question.options.shuffled() : question.options
             note = store.progressFor(question).note
         }
         .sheet(item: $selectedGlossary) { term in
@@ -194,10 +202,10 @@ struct QuestionInteractionView: View {
         } label: {
             HStack(alignment: .top, spacing: 12) {
                 Text("\(index + 1)").font(.callout.bold()).frame(width: 25, height: 25).background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
-                Text(option.text).multilineTextAlignment(.leading).frame(maxWidth: .infinity, alignment: .leading)
+                Text(option.text).font(.system(size: reading.answerFontSize)).multilineTextAlignment(.leading).frame(maxWidth: .infinity, alignment: .leading)
                 if outcome != nil && isCorrect { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green) }
                 else if outcome != nil && selected { Image(systemName: "xmark.circle.fill").foregroundStyle(.red) }
-            }.padding(14)
+            }.padding(reading.answerPadding)
                 .background(background(isCorrect: isCorrect, selected: selected), in: RoundedRectangle(cornerRadius: 12))
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(border(isCorrect: isCorrect, selected: selected), lineWidth: selected || (outcome != nil && isCorrect) ? 2 : 1))
         }.buttonStyle(.plain).disabled(outcome != nil)
@@ -219,11 +227,7 @@ struct QuestionInteractionView: View {
 
     private func answer(_ value: AttemptOutcome, optionId: String?) {
         guard outcome == nil else { return }
-        selectedOptionId = optionId
-        outcome = value
-        awaitingNext = true
-        showExplanation = true
-        onOutcome(value)
+        onOutcome(value, optionId)
     }
 
     private var notes: some View {
@@ -235,6 +239,7 @@ struct QuestionInteractionView: View {
 }
 
 struct FeedbackBanner: View {
+    @EnvironmentObject private var store: AppStore
     let outcome: AttemptOutcome
     let question: Question
     var body: some View {
@@ -242,7 +247,7 @@ struct FeedbackBanner: View {
             Image(systemName: outcome == .correct ? "checkmark.circle.fill" : "lightbulb.fill").font(.title2)
             VStack(alignment: .leading, spacing: 4) {
                 Text(title).font(.headline)
-                Text("Ответ экзаменационного банка: \(question.officialCorrectAnswerText)")
+                Text("Ответ экзаменационного банка: \(question.officialCorrectAnswerText)").font(.system(size: store.settings.readingSize.explanationFontSize))
             }
         }.foregroundStyle(outcome == .correct ? .green : .orange).padding(14).frame(maxWidth: .infinity, alignment: .leading)
             .background((outcome == .correct ? Color.green : Color.orange).opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
@@ -259,12 +264,42 @@ struct ExplanationView: View {
     var onGlossary: ((GlossaryEntry) -> Void)? = nil
     @State private var layer = 0
     private var terms: [GlossaryEntry] { question.glossaryTerms.compactMap { id in store.glossary.first(where: { $0.id == id }) } }
+    private var wrongOptions: [QuestionOption] {
+        question.options
+            .filter { $0.id != question.correctOptionId }
+            .sorted { lhs, rhs in
+                if lhs.id == selectedOptionId { return true }
+                if rhs.id == selectedOptionId { return false }
+                return lhs.id < rhs.id
+            }
+    }
     var body: some View {
         GroupBox {
             VStack(alignment: .leading, spacing: 14) {
                 Picker("Слой", selection: $layer) { Text("Кратко").tag(0); Text("С нуля").tag(1); Text("Почему").tag(2); Text("Другие ответы").tag(3) }
                     .pickerStyle(.segmented).labelsHidden()
-                Text(layerText).textSelection(.enabled).lineSpacing(4)
+                if layer == 3 {
+                    VStack(alignment: .leading, spacing: 12) {
+                        ForEach(wrongOptions) { option in
+                            VStack(alignment: .leading, spacing: 6) {
+                                HStack(alignment: .top) {
+                                    Text(option.text).font(.system(size: store.settings.readingSize.answerFontSize, weight: .semibold))
+                                    Spacer()
+                                    if option.id == selectedOptionId { Text("Ваш ответ").font(.caption.bold()).foregroundStyle(.red) }
+                                }
+                                Text(question.wrongOptionExplanations[option.id] ?? "")
+                                    .font(.system(size: store.settings.readingSize.explanationFontSize))
+                                    .lineSpacing(4)
+                            }
+                            .padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(option.id == selectedOptionId ? Color.red.opacity(0.08) : Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 10))
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(option.id == selectedOptionId ? Color.red.opacity(0.45) : Color.secondary.opacity(0.15)))
+                        }
+                    }
+                } else {
+                    Text(layerText).font(.system(size: store.settings.readingSize.explanationFontSize)).textSelection(.enabled).lineSpacing(4)
+                }
                 if !terms.isEmpty {
                     Divider()
                     Text("Термины").font(.caption.bold()).foregroundStyle(.secondary)
@@ -285,6 +320,7 @@ struct ExplanationView: View {
             case "Подробно": 2
             default: 0
             }
+            if CommandLine.arguments.contains("--snapshot-other-answers") { layer = 3 }
         }
     }
     private var layerText: String {
@@ -292,9 +328,7 @@ struct ExplanationView: View {
         case 0: question.explanationShort
         case 1: question.explanationBeginner
         case 2: question.explanationReasoning
-        default:
-            if let selectedOptionId, let text = question.wrongOptionExplanations[selectedOptionId] { text }
-            else { question.wrongOptionExplanations.values.sorted().joined(separator: "\n\n") }
+        default: ""
         }
     }
 }
@@ -342,7 +376,7 @@ struct GlossaryCard: View {
                     .buttonStyle(.borderedProminent).tint(.orange)
                 Button("Понял") { store.markConceptUnderstood(entry.id); dismiss() }.buttonStyle(.bordered)
             }
-        }.padding(26).frame(width: 500)
+        }.padding(30).frame(width: 660)
             .onAppear { note = store.conceptProgressFor(entry.id).personalNotes }
     }
 }
@@ -415,9 +449,11 @@ struct MockExamView: View {
     @State private var result: MockExamResult?
 
     var body: some View {
-        if questions.isEmpty { intro }
-        else if finished { results }
-        else { exam }
+        Group {
+            if questions.isEmpty { intro }
+            else if finished { results }
+            else { exam }
+        }.onAppear { prepareSnapshotIfNeeded() }
     }
 
     private var intro: some View {
@@ -437,19 +473,20 @@ struct MockExamView: View {
             VStack(alignment: .leading, spacing: 20) {
                 HStack { Text("Вопрос \(index + 1) из 30").monospacedDigit(); ProgressView(value: Double(index + 1), total: 30).frame(maxWidth: 340); Spacer(); Button("Завершить досрочно") { finish() } }
                 Text("№ \(question.examNumber)").font(.callout).foregroundStyle(.secondary)
-                Text(question.stem).font(.title2.bold())
+                Text(question.stem).font(.system(size: store.settings.readingSize.questionFontSize, weight: .bold))
                 FigureView(asset: question.figureAsset)
+                if question.teachingDiagramAsset != question.figureAsset { FigureView(asset: question.teachingDiagramAsset) }
                 ForEach(Array(displayed.enumerated()), id: \.element.id) { optionIndex, option in
                     Button {
                         answers[question.id] = option.id
                         if index == questions.count - 1 { finish() } else { index += 1; loadOptions() }
                     } label: {
-                        HStack { Text("\(optionIndex + 1)").font(.callout.bold()).frame(width: 24); Text(option.text).frame(maxWidth: .infinity, alignment: .leading) }.padding(14)
+                        HStack { Text("\(optionIndex + 1)").font(.callout.bold()).frame(width: 24); Text(option.text).font(.system(size: store.settings.readingSize.answerFontSize)).frame(maxWidth: .infinity, alignment: .leading) }.padding(store.settings.readingSize.answerPadding)
                             .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
                             .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary))
                     }.buttonStyle(.plain).keyboardShortcut(KeyEquivalent(Character(String(optionIndex + 1))), modifiers: [])
                 }
-            }.padding(30).frame(maxWidth: 900, alignment: .leading)
+            }.padding(30).frame(maxWidth: store.settings.readingSize.contentMaxWidth, alignment: .leading)
         }
     }
 
@@ -474,11 +511,22 @@ struct MockExamView: View {
                     }
                 }
                 Button("Новый экзамен") { questions = []; answers = [:]; index = 0; finished = false; result = nil }.buttonStyle(.borderedProminent)
-            }.padding(30).frame(maxWidth: 900, alignment: .leading)
+            }.padding(30).frame(maxWidth: store.settings.readingSize.contentMaxWidth, alignment: .leading)
         }
     }
 
     private func loadOptions() { guard index < questions.count else { return }; displayed = store.settings.randomizeOptions ? questions[index].options.shuffled() : questions[index].options }
+    private func prepareSnapshotIfNeeded() {
+        guard let argumentIndex = CommandLine.arguments.firstIndex(of: "--snapshot-mode"), CommandLine.arguments.indices.contains(argumentIndex + 1) else { return }
+        let mode = CommandLine.arguments[argumentIndex + 1]
+        guard mode == "mock-question" || mode == "mock-results", questions.isEmpty else { return }
+        questions = MockExamBuilder().makeExam(from: store.questions)
+        loadOptions()
+        if mode == "mock-results" {
+            for question in questions.prefix(17) { answers[question.id] = question.correctOptionId }
+            finish()
+        }
+    }
     private func finish() {
         guard !finished else { return }
         finished = true

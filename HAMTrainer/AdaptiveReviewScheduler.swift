@@ -155,34 +155,111 @@ struct AdaptiveReviewScheduler: Sendable {
     }
 }
 
+struct StudyOccurrence: Identifiable, Hashable, Sendable {
+    let id: UUID
+    let card: StudyCard
+    let displayedOptions: [QuestionOption]
+    var selectedOptionId: String?
+    var outcome: AttemptOutcome?
+    let round: Int?
+
+    init(card: StudyCard, randomizeOptions: Bool, round: Int? = nil) {
+        id = UUID()
+        self.card = card
+        displayedOptions = randomizeOptions ? card.question.options.shuffled() : card.question.options
+        self.round = round
+    }
+}
+
 struct StudySession: Sendable {
-    private(set) var queue: [StudyCard]
+    private(set) var occurrences: [StudyOccurrence]
     private(set) var index = 0
+    private(set) var viewingIndex = 0
     private(set) var appearanceCounts: [String: Int] = [:]
     private(set) var summary = SessionSummary()
     let drillWeak: Bool
     let dynamicallyReconsidersSmartQueue: Bool
+    let totalRounds: Int
+    private let randomizeOptions: Bool
+    private let isFixedRoundDrill: Bool
     private let targetAnswerCount: Int
 
-    init(cards: [StudyCard], drillWeak: Bool = false, dynamicallyReconsidersSmartQueue: Bool = false) {
-        queue = cards
+    init(
+        cards: [StudyCard], drillWeak: Bool = false,
+        dynamicallyReconsidersSmartQueue: Bool = false,
+        randomizeOptions: Bool = true
+    ) {
+        occurrences = cards.map { StudyOccurrence(card: $0, randomizeOptions: randomizeOptions) }
         self.drillWeak = drillWeak
         self.dynamicallyReconsidersSmartQueue = dynamicallyReconsidersSmartQueue
+        self.randomizeOptions = randomizeOptions
+        totalRounds = 1
+        isFixedRoundDrill = false
         targetAnswerCount = cards.count
     }
 
-    init(questions: [Question], reason: StudySelectionReason = .manuallySelected, drillWeak: Bool = false) {
-        self.init(cards: questions.map { StudyCard(question: $0, reason: reason) }, drillWeak: drillWeak)
+    init(
+        questions: [Question], reason: StudySelectionReason = .manuallySelected,
+        drillWeak: Bool = false, randomizeOptions: Bool = true
+    ) {
+        self.init(
+            cards: questions.map { StudyCard(question: $0, reason: reason) },
+            drillWeak: drillWeak,
+            randomizeOptions: randomizeOptions
+        )
     }
 
-    var current: StudyCard? { index < queue.count ? queue[index] : nil }
+    init(
+        intensiveQuestions questions: [Question], rounds: Int,
+        randomizeOptions: Bool = true,
+        shuffle: ([Question]) -> [Question] = { $0.shuffled() }
+    ) {
+        let safeRounds = [1, 3, 5].contains(rounds) ? rounds : 1
+        var built: [StudyOccurrence] = []
+        for round in 1...safeRounds {
+            var ordered = shuffle(questions)
+            if questions.count > 1, let previous = built.last?.card.question.id,
+               ordered.first?.id == previous,
+               let swapIndex = ordered.firstIndex(where: { $0.id != previous }) {
+                ordered.swapAt(0, swapIndex)
+            }
+            built.append(contentsOf: ordered.map {
+                StudyOccurrence(
+                    card: StudyCard(question: $0, reason: .manuallySelected),
+                    randomizeOptions: randomizeOptions,
+                    round: round
+                )
+            })
+        }
+        occurrences = built
+        drillWeak = true
+        dynamicallyReconsidersSmartQueue = false
+        self.randomizeOptions = randomizeOptions
+        totalRounds = safeRounds
+        isFixedRoundDrill = true
+        targetAnswerCount = built.count
+    }
+
+    var queue: [StudyCard] { occurrences.map(\.card) }
+    var currentOccurrence: StudyOccurrence? { viewingIndex < occurrences.count ? occurrences[viewingIndex] : nil }
+    var current: StudyCard? { currentOccurrence?.card }
     var currentQuestion: Question? { current?.question }
-    var isComplete: Bool { index >= queue.count }
-    var position: Int { min(index + 1, queue.count) }
+    var isComplete: Bool { index >= occurrences.count }
+    var position: Int { min(viewingIndex + 1, occurrences.count) }
+    var currentRound: Int { currentOccurrence?.round ?? 1 }
+    var canGoBack: Bool { viewingIndex > 0 }
+    var canGoForward: Bool { viewingIndex < index }
+    var isViewingHistory: Bool { viewingIndex < index }
     var smartRefreshLength: Int { max(0, targetAnswerCount - index) }
 
-    mutating func record(_ outcome: AttemptOutcome, previousState: LearningState, newState: LearningState) {
-        guard let card = current else { return }
+    mutating func record(
+        _ outcome: AttemptOutcome, selectedOptionId: String? = nil,
+        previousState: LearningState, newState: LearningState
+    ) {
+        guard viewingIndex == index, occurrences.indices.contains(index), occurrences[index].outcome == nil else { return }
+        occurrences[index].selectedOptionId = selectedOptionId
+        occurrences[index].outcome = outcome
+        let card = occurrences[index].card
         let question = card.question
         let count = appearanceCounts[question.id, default: 0] + 1
         appearanceCounts[question.id] = count
@@ -202,8 +279,12 @@ struct StudySession: Sendable {
             summary.topics[question.topic, default: 0] += 1
             let appearanceLimit = drillWeak ? 3 : 2
             let insertion = index + AdaptiveReviewScheduler.minimumOtherQuestionGap + 1
-            if count < appearanceLimit, insertion <= queue.count {
-                queue.insert(StudyCard(question: question, reason: .sessionMistake), at: insertion)
+            if !isFixedRoundDrill, count < appearanceLimit, insertion <= occurrences.count {
+                let repeatOccurrence = StudyOccurrence(
+                    card: StudyCard(question: question, reason: .sessionMistake),
+                    randomizeOptions: randomizeOptions
+                )
+                occurrences.insert(repeatOccurrence, at: insertion)
             }
         }
     }
@@ -212,17 +293,36 @@ struct StudySession: Sendable {
         record(outcome, previousState: .unseen, newState: outcome == .correct ? .review : .weak)
     }
 
-    mutating func advance() { index += 1 }
+    mutating func advance() {
+        if isViewingHistory { goForward(); return }
+        index += 1
+        viewingIndex = index
+    }
+
+    mutating func goBack() {
+        guard canGoBack else { return }
+        viewingIndex -= 1
+    }
+
+    mutating func goForward() {
+        guard canGoForward else { return }
+        viewingIndex += 1
+    }
+
+    mutating func returnToFrontier() { viewingIndex = index }
 
     mutating func reconsiderSmartQueue(with candidates: [StudyCard]) {
         guard dynamicallyReconsidersSmartQueue else { return }
-        let answeredPrefix = Array(queue.prefix(index))
+        let answeredPrefix = Array(occurrences.prefix(index))
         let remaining = max(0, targetAnswerCount - answeredPrefix.count)
         let appearanceLimit = drillWeak ? 3 : 2
         let refreshed = candidates.filter {
             appearanceCounts[$0.id, default: 0] < appearanceLimit
         }
-        queue = answeredPrefix + Array(refreshed.prefix(remaining))
+        let freshOccurrences = refreshed
+            .prefix(remaining)
+            .map { StudyOccurrence(card: $0, randomizeOptions: randomizeOptions) }
+        occurrences = answeredPrefix + freshOccurrences
     }
 
     mutating func markConceptUnclear(_ id: String) {

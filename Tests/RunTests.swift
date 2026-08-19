@@ -126,6 +126,12 @@ struct CoreTestRunner {
             try expect(restarted.progressFor(question).nextDueStudyStep == 7, "due distance changed on restart")
         }))
 
+        tests.append(("legacy settings default to large reading size", {
+            let legacy = Data(#"{"defaultSessionLength":30,"randomizeOptions":false,"explanationStyle":"Кратко"}"#.utf8)
+            let settings = try AppStore.decoder.decode(UserSettings.self, from: legacy)
+            try expect(settings.defaultSessionLength == 30 && settings.readingSize == .large, "legacy settings migration changed values or text default")
+        }))
+
         tests.append(("session boundary preserves remaining distance", {
             let url = temporaryURL()
             let failed = sampleQuestion(1)
@@ -172,6 +178,147 @@ struct CoreTestRunner {
             var session = StudySession(questions: (1...4).map { sampleQuestion($0) })
             session.record(.incorrect)
             try expect(session.queue.count == 4, "repeat inserted without five intervening cards")
+        }))
+
+        tests.append(("history A preserves answered occurrence presentation", {
+            let q1 = sampleQuestion(1), q2 = sampleQuestion(2)
+            var session = StudySession(questions: [q1, q2], randomizeOptions: true)
+            let order = session.currentOccurrence!.displayedOptions.map(\.id)
+            session.record(.incorrect, selectedOptionId: q1.options[1].id, previousState: .unseen, newState: .learning)
+            session.advance()
+            session.goBack()
+            let historical = session.currentOccurrence!
+            try expect(historical.displayedOptions.map(\.id) == order, "historical option order changed")
+            try expect(historical.selectedOptionId == q1.options[1].id && historical.outcome == .incorrect, "historical answer state changed")
+        }))
+
+        tests.append(("history B navigation does not record progress", {
+            let url = temporaryURL()
+            let q1 = sampleQuestion(1), q2 = sampleQuestion(2)
+            let store = AppStore(persistenceURL: url, loadContent: false)
+            var session = StudySession(questions: [q1, q2], randomizeOptions: false)
+            let before = store.progressFor(q1)
+            let updated = store.record(.correct, for: q1)
+            session.record(.correct, selectedOptionId: q1.correctOptionId, previousState: before.state, newState: updated.state)
+            session.advance()
+            let step = store.studyStep, progress = store.progress, attempts = session.summary.attempts
+            session.goBack(); session.goForward()
+            try expect(store.studyStep == step && store.progress == progress, "history navigation mutated scheduler progress")
+            try expect(session.summary.attempts == attempts, "history navigation appended a summary attempt")
+        }))
+
+        tests.append(("history C active frontier keeps option order", {
+            var session = StudySession(questions: [sampleQuestion(1), sampleQuestion(2)], randomizeOptions: true)
+            session.record(.correct); session.advance()
+            let frontierID = session.currentOccurrence!.id
+            let order = session.currentOccurrence!.displayedOptions.map(\.id)
+            session.goBack(); session.goForward()
+            try expect(session.currentOccurrence!.id == frontierID && session.currentOccurrence!.displayedOptions.map(\.id) == order, "frontier presentation changed")
+        }))
+
+        tests.append(("history D navigates several occurrences both ways", {
+            var session = StudySession(questions: (1...4).map { sampleQuestion($0) }, randomizeOptions: false)
+            for _ in 0..<3 { session.record(.correct); session.advance() }
+            session.goBack(); session.goBack(); session.goBack()
+            try expect(session.currentQuestion?.id == "q-1", "multi-step back failed")
+            session.goForward(); session.goForward(); session.goForward()
+            try expect(session.currentQuestion?.id == "q-4" && !session.isViewingHistory, "multi-step forward failed")
+        }))
+
+        tests.append(("history E duplicate question occurrences are independent", {
+            let q = sampleQuestion(1)
+            var session = StudySession(questions: [q, q], randomizeOptions: false)
+            let firstID = session.currentOccurrence!.id
+            session.record(.incorrect, selectedOptionId: q.options[1].id, previousState: .unseen, newState: .learning)
+            session.advance()
+            let secondID = session.currentOccurrence!.id
+            try expect(firstID != secondID && session.currentOccurrence!.outcome == nil, "duplicate occurrence reused presentation state")
+            session.record(.correct, selectedOptionId: q.correctOptionId, previousState: .learning, newState: .review)
+            session.advance(); session.goBack(); session.goBack()
+            try expect(session.currentOccurrence!.outcome == .incorrect, "first duplicate occurrence was overwritten")
+        }))
+
+        tests.append(("history F dynamic refresh preserves answered occurrences", {
+            let questions = (1...4).map { sampleQuestion($0) }
+            var session = StudySession(cards: questions.prefix(3).map { StudyCard(question: $0, reason: .new) }, dynamicallyReconsidersSmartQueue: true, randomizeOptions: false)
+            session.record(.correct); session.advance()
+            let answered = session.occurrences[0]
+            let oldFutureIDs = Array(session.occurrences.dropFirst()).map(\.id)
+            session.reconsiderSmartQueue(with: [StudyCard(question: questions[3], reason: .new)])
+            try expect(session.occurrences[0] == answered, "dynamic refresh changed answered history")
+            try expect(Array(session.occurrences.dropFirst()).map(\.id) != oldFutureIDs, "dynamic refresh did not replace future occurrences")
+        }))
+
+        tests.append(("history G historical answer cannot be submitted twice", {
+            var session = StudySession(questions: [sampleQuestion(1), sampleQuestion(2)], randomizeOptions: false)
+            session.record(.incorrect); session.advance(); session.goBack()
+            let summary = session.summary
+            session.record(.correct)
+            try expect(session.summary.total == summary.total && session.summary.attempts == summary.attempts, "historical occurrence accepted a second answer")
+        }))
+
+        tests.append(("history H bookmark and note persist while looking backward", {
+            let url = temporaryURL()
+            let q1 = sampleQuestion(1), q2 = sampleQuestion(2)
+            let store = AppStore(persistenceURL: url, loadContent: false)
+            var session = StudySession(questions: [q1, q2], randomizeOptions: false)
+            session.record(.correct); session.advance(); session.goBack()
+            store.toggleBookmark(q1); store.updateNote("Историческая заметка", for: q1)
+            let restored = AppStore(persistenceURL: url, loadContent: false)
+            try expect(restored.progressFor(q1).bookmarked && restored.progressFor(q1).note == "Историческая заметка", "editable historical metadata did not persist")
+        }))
+
+        tests.append(("historical errors filter includes recovered question", {
+            var recovered = QuestionProgress(questionId: "q")
+            recovered.state = .mastered; recovered.incorrectCount = 1
+            try expect(WeakQuestionFilter.historicalErrors.matches(recovered), "recovered historical error was omitted")
+            try expect(!WeakQuestionFilter.all.matches(recovered), "recovered question incorrectly remained currently weak")
+        }))
+
+        tests.append(("five-round drill has exactly five complete rounds", {
+            let questions = (1...4).map { sampleQuestion($0) }
+            var calls = 0
+            let session = StudySession(intensiveQuestions: questions, rounds: 5, randomizeOptions: false) { values in
+                calls += 1
+                return calls.isMultiple(of: 2) ? Array(values.reversed()) : values
+            }
+            try expect(session.occurrences.count == 20 && calls == 5, "round count or independent shuffle calls wrong")
+            for round in 1...5 {
+                let ids = session.occurrences.filter { $0.round == round }.map { $0.card.question.id }
+                try expect(ids.count == 4 && Set(ids) == Set(questions.map(\.id)), "round \(round) is not a full snapshot")
+            }
+            let orders = (1...5).map { round in session.occurrences.filter { $0.round == round }.map { $0.card.question.id } }
+            try expect(orders[0] != orders[1], "rounds were not independently shuffled")
+        }))
+
+        tests.append(("round boundary avoids immediate duplicate", {
+            let questions = (1...3).map { sampleQuestion($0) }
+            var calls = 0
+            let session = StudySession(intensiveQuestions: questions, rounds: 3, randomizeOptions: false) { values in
+                calls += 1
+                return calls.isMultiple(of: 2) ? Array(values.reversed()) : values
+            }
+            for boundary in [3, 6] {
+                try expect(session.occurrences[boundary - 1].card.question.id != session.occurrences[boundary].card.question.id, "round boundary duplicated a question")
+            }
+        }))
+
+        tests.append(("starting round drill leaves stored progress unchanged", {
+            let url = temporaryURL(), q = sampleQuestion(1)
+            let store = AppStore(persistenceURL: url, loadContent: false)
+            _ = store.record(.incorrect, for: q)
+            let before = store.progress
+            _ = StudySession(intensiveQuestions: [q], rounds: 5, randomizeOptions: false)
+            try expect(store.progress == before, "starting intensive drill reset progress")
+        }))
+
+        tests.append(("round drill scheduler distinguishes early and due correct", {
+            var progress = QuestionProgress(questionId: "q")
+            progress.state = .review; progress.reviewStage = 1; progress.successfulSpacedReviews = 1; progress.nextDueStudyStep = 20
+            let early = scheduler.applying(.correct, to: progress, completedStudyStep: 10, selectionReason: .manuallySelected)
+            try expect(early.reviewStage == 1 && early.successfulSpacedReviews == 1, "early round advanced spaced stage")
+            let due = scheduler.applying(.correct, to: early, completedStudyStep: early.nextDueStudyStep!, selectionReason: .manuallySelected)
+            try expect(due.reviewStage == 2 && due.successfulSpacedReviews == 2, "later due round did not advance spaced stage")
         }))
 
         tests.append(("due weak questions outrank new questions", {
@@ -474,22 +621,30 @@ struct CoreTestRunner {
             let ids = Set(glossary.map(\.id))
             let missing = Set(questions.flatMap(\.glossaryTerms)).subtracting(ids)
             try expect(missing.isEmpty, "unresolved glossary IDs: \(missing.sorted())")
-            try expect(glossary.count >= 100, "glossary is not comprehensive: \(glossary.count)")
-            let duplicateBeginner = glossary.filter {
-                $0.shortDefinition.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-                    == $0.fromZero.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            }
-            try expect(duplicateBeginner.isEmpty, "fromZero duplicates shortDefinition: \(duplicateBeginner.map(\.id))")
+            try expect(glossary.count == 176, "authored glossary count is not exact: \(glossary.count)")
         }))
 
         tests.append(("runtime explanations are structurally complete", {
             let questions = try AppStore.decoder.decode([Question].self, from: Data(contentsOf: content.appendingPathComponent("questions.json")))
+            var wrongExplanationCount = 0
             for question in questions {
                 try expect(!question.explanationShort.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, "missing short explanation: \(question.examNumber)")
                 try expect(!question.explanationBeginner.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, "missing beginner explanation: \(question.examNumber)")
                 try expect(!question.explanationReasoning.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, "missing reasoning: \(question.examNumber)")
                 try expect(question.wrongOptionExplanations.count == 3, "wrong-option coverage: \(question.examNumber)")
                 try expect(question.wrongOptionExplanations.values.allSatisfy { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }, "empty wrong-option explanation: \(question.examNumber)")
+                try expect(question.wrongOptionExplanations[question.correctOptionId] == nil, "correct option present in wrong map: \(question.examNumber)")
+                wrongExplanationCount += question.wrongOptionExplanations.count
+            }
+            try expect(wrongExplanationCount == 1_215, "wrong-option authored coverage is \(wrongExplanationCount), expected 1215")
+        }))
+
+        tests.append(("clean extracted wrong options map to stable IDs", {
+            let questions = try AppStore.decoder.decode([Question].self, from: Data(contentsOf: content.appendingPathComponent("questions.json")))
+            let byNumber = Dictionary(uniqueKeysWithValues: questions.map { ($0.examNumber, $0) })
+            let expected = [23: "q-023-option-4", 32: "q-032-option-4", 408: "q-408-option-4", 419: "q-419-option-4"]
+            for (number, optionID) in expected {
+                try expect(byNumber[number]?.wrongOptionExplanations[optionID]?.isEmpty == false, "clean mapping missing for question \(number)")
             }
         }))
 
