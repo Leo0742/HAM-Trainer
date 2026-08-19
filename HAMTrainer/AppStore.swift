@@ -111,7 +111,9 @@ final class AppStore: ObservableObject {
 
     @discardableResult
     func addPersonalGlossaryEntry(term: String, relatedQuestionIDs: [String] = []) -> PersonalGlossaryEntry {
-        let entry = PersonalGlossaryEntry(term: term, relatedQuestionIDs: relatedQuestionIDs)
+        let cleaned = term.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return PersonalGlossaryEntry(term: "") }
+        let entry = PersonalGlossaryEntry(term: cleaned, relatedQuestionIDs: validatedQuestionIDs(relatedQuestionIDs))
         personalGlossary.append(entry)
         saveProgress()
         return entry
@@ -120,6 +122,9 @@ final class AppStore: ObservableObject {
     func updatePersonalGlossaryEntry(_ entry: PersonalGlossaryEntry) {
         guard let index = personalGlossary.firstIndex(where: { $0.id == entry.id }) else { return }
         var updated = entry
+        updated.term = entry.term.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !updated.term.isEmpty else { return }
+        updated.relatedQuestionIDs = validatedQuestionIDs(entry.relatedQuestionIDs)
         updated.updatedAt = Date()
         personalGlossary[index] = updated
         saveProgress()
@@ -128,6 +133,15 @@ final class AppStore: ObservableObject {
     func deletePersonalGlossaryEntry(id: UUID) {
         personalGlossary.removeAll { $0.id == id }
         saveProgress()
+    }
+
+    private func validatedQuestionIDs(_ ids: [String]) -> [String] {
+        guard !questions.isEmpty else { return Array(Set(ids)).sorted() }
+        return Self.validatedQuestionIDs(ids, validQuestionIDs: Set(questions.map(\.id)))
+    }
+
+    static func validatedQuestionIDs(_ ids: [String], validQuestionIDs: Set<String>) -> [String] {
+        Array(Set(ids).intersection(validQuestionIDs)).sorted()
     }
 
     func tagMistake(_ reason: MistakeReason, question: Question) {

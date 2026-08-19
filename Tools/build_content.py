@@ -218,6 +218,26 @@ DEFAULT_TERMS = {
     }.items()
 }
 
+TEACHING_DIAGRAMS = {
+    "transistor": "diagrams/teaching/transistor.png",
+    "bipolar-transistor": "diagrams/teaching/transistor.png",
+    "capacitor": "diagrams/teaching/reactive-components.png",
+    "capacitance": "diagrams/teaching/reactive-components.png",
+    "inductance": "diagrams/teaching/reactive-components.png",
+    "lc": "diagrams/teaching/reactive-components.png",
+    "common-emitter": "diagrams/teaching/transistor-configurations.png",
+    "common-base": "diagrams/teaching/transistor-configurations.png",
+    "common-collector": "diagrams/teaching/transistor-configurations.png",
+    "phase": "diagrams/teaching/phase-inversion.png",
+    "superheterodyne": "diagrams/teaching/superheterodyne.png",
+    "mixer": "diagrams/teaching/superheterodyne.png",
+    "dipole": "diagrams/teaching/dipole.png",
+    "antenna": "diagrams/teaching/vertical-polarization.png",
+    "polarization": "diagrams/teaching/vertical-polarization.png",
+    "swr": "diagrams/teaching/swr.png",
+    "filter": "diagrams/teaching/filters.png",
+}
+
 
 def normalize(value: str) -> str:
     return value.lower().replace("ё", "е").replace("–", "-").replace("—", "-")
@@ -233,6 +253,7 @@ def glossary() -> list[dict]:
             "fromZero": definition,
             "radioExample": example,
             "relatedTerms": [],
+            "diagramAsset": TEACHING_DIAGRAMS.get(item_id),
         }
         for item_id, term, aliases, definition, example in TERM_DATA
     ]
@@ -316,20 +337,33 @@ def enrich(question: dict, entries: list[dict]) -> dict:
     return value
 
 
+def load_curated_questions() -> dict[str, dict]:
+    curated: dict[str, dict] = {}
+    for path in sorted((ROOT / "ContentOverrides").glob("questions-*.json")):
+        payload = json.loads(path.read_text(encoding="utf-8")).get("questions", {})
+        overlap = set(curated).intersection(payload)
+        if overlap:
+            raise ValueError(f"duplicate curated questions in {path}: {sorted(overlap)}")
+        curated.update(payload)
+    return curated
+
+
 def main() -> None:
     raw_path = ROOT / "ContentRaw" / "questions-imported.json"
     if not raw_path.exists():
         raw_path = ROOT / "Content" / "questions.json"
     raw = json.loads(raw_path.read_text(encoding="utf-8"))
     entries = glossary()
+    curated = load_curated_questions()
     overrides_path = ROOT / "ContentOverrides" / "question-overrides.json"
     overrides = json.loads(overrides_path.read_text(encoding="utf-8")).get("questions", {}) if overrides_path.exists() else {}
 
     questions = []
     for question in raw:
         value = enrich(question, entries)
+        value.update(curated.get(str(question["examNumber"]), {}))
         override = overrides.get(str(question["examNumber"]), {})
-        value.update({key: val for key, val in override.items() if key != "correctOptionIndex"})
+        value.update({key: val for key, val in override.items() if key not in {"correctOptionIndex", "answerMatchNote"}})
         questions.append(value)
 
     # Derive related-term links from co-occurrence in the current question bank.

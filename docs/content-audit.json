@@ -1,69 +1,69 @@
 {
-  "generatedOn": "2026-08-19",
-  "questions": {
-    "total": 405,
+  "generatedOn": "reproducible",
+  "structural": {
+    "totalQuestions": 405,
     "uniqueExamNumbers": 405,
-    "topics": 19,
+    "resolvedCorrectOptionIds": 405,
+    "unchangedOfficialStems": 405,
+    "unchangedOfficialOptionSets": 405,
     "withBeginnerExplanation": 405,
     "withReasoningExplanation": 405,
     "withCompleteWrongOptionExplanations": 405,
     "withSourceReferences": 405,
-    "withGlossaryLinks": 405,
-    "figureQuestions": 24,
-    "figureAssets": 24,
-    "uniqueShortExplanations": 401
+    "unresolvedGlossaryReferences": [],
+    "missingDiagramAssets": [],
+    "genericBoilerplateQuestionIds": []
+  },
+  "curated": {
+    "overrideFiles": [
+      "ContentOverrides/questions-001-100.json",
+      "ContentOverrides/questions-101-200.json",
+      "ContentOverrides/questions-201-300.json",
+      "ContentOverrides/questions-301-426.json"
+    ],
+    "explicitQuestionRecords": 405,
+    "explicitBeginnerExplanations": 405,
+    "explicitReasoningExplanations": 405,
+    "explicitWrongOptionSets": 405,
+    "recordsWithEveryRequiredField": 405,
+    "fallbackQuestionIds": [],
+    "requiresManualReview": [],
+    "method": "Curated means an explicit committed per-question override record. Fallback-generated text is excluded from all curated counts. Counts do not claim an automated factual-quality score."
+  },
+  "answerMatching": {
+    "exact": 400,
+    "manual": 5,
+    "unresolvedFuzzy": 0,
+    "unresolved": []
   },
   "glossary": {
     "entries": 142,
     "withDefinitions": 142,
-    "withExamples": 142,
-    "withRelatedTerms": 110,
-    "unresolvedReferences": 0
+    "withExamples": 142
   },
-  "legacyGenericTemplateMatches": 0,
-  "missingSourceReferences": 0,
-  "validationFailures": [],
-  "manualFollowUp": [
+  "assets": {
+    "originalExamFigures": 24,
+    "additionalTeachingDiagrams": 9
+  },
+  "documentedSourceConflicts": [
     {
-      "questions": [
-        156,
-        159
-      ],
-      "reason": "The source guide reuses the same short explanation; confirm the shared rule is intentional."
-    },
-    {
-      "questions": [
-        221,
-        222
-      ],
-      "reason": "The source guide reuses the same short explanation; confirm the shared rule is intentional."
-    },
-    {
-      "questions": [
-        267,
-        268
-      ],
-      "reason": "The source guide reuses the same short explanation; confirm the shared rule is intentional."
-    },
-    {
-      "questions": [
-        312,
-        313
-      ],
-      "reason": "The source guide reuses the same short explanation; confirm the shared rule is intentional."
+      "question": 201,
+      "note": "Guide says U or E; official options contain U. Explicit source match selects U and the in-app historical note preserves the discrepancy."
     }
   ],
   "sourceFiles": [
     {
       "file": "Справочник_КЭ.pdf",
       "bytes": 1397332,
-      "sha256": "8108c82eb316069167a7ae3e525a9991637e2f547f12fbbde637e684dbad55d7"
+      "sha256": "8108c82eb316069167a7ae3e525a9991637e2f547f12fbbde637e684dbad55d7",
+      "unchanged": true
     },
     {
       "file": "radiolyubitel_2_category_guide_2026.pdf",
       "bytes": 3652891,
-      "sha256": "163c01bded0c4b5cee92892948f15eab32b226f6f0bd0edc70f0beecd6317749"
+      "sha256": "163c01bded0c4b5cee92892948f15eab32b226f6f0bd0edc70f0beecd6317749",
+      "unchanged": true
     }
   ],
-  "method": "Structural checks cover every item. Educational text is deterministic and question-specific; manual follow-up flags duplicated source-guide explanations, not presumed factual errors."
+  "failures": []
 }

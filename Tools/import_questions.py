@@ -172,9 +172,11 @@ def build_questions(guide: dict[int, GuideEntry], reference: dict[int, Reference
         r = reference[number]
         match_index, confidence = best_option(g.answer, r.options)
         override = overrides.get(str(number), {})
+        method = "exact" if confidence == 1.0 else "fuzzy"
         if "correctOptionIndex" in override:
             match_index = int(override["correctOptionIndex"])
             confidence = 1.0
+            method = "manual"
         qid = f"q-{number:03d}"
         options = [{"id": f"{qid}-option-{i + 1}", "text": text} for i, text in enumerate(r.options)]
         is_figure = "рисунк" in g.question_type.lower()
@@ -218,9 +220,9 @@ def build_questions(guide: dict[int, GuideEntry], reference: dict[int, Reference
             },
             "legalHistoricalNote": override.get("legalHistoricalNote"),
         }
-        question.update({k: v for k, v in override.items() if k != "correctOptionIndex"})
+        question.update({k: v for k, v in override.items() if k not in {"correctOptionIndex", "answerMatchNote"}})
         questions.append(question)
-        report.append({"number": number, "confidence": round(confidence, 3), "answer": g.answer, "matched": r.options[match_index]})
+        report.append({"number": number, "confidence": round(confidence, 6), "method": method, "answer": g.answer, "matched": r.options[match_index]})
     return questions, report
 
 
@@ -259,9 +261,10 @@ def main() -> None:
     source_map = {q["id"]: q["sourceReference"] for q in questions}
     (raw_dir / "source-map-imported.json").write_text(json.dumps(source_map, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     (cache / "match-report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    low = [entry for entry in report if entry["confidence"] < 0.74]
-    if low:
-        raise ValueError(f"{len(low)} answer matches require overrides; see {cache / 'match-report.json'}")
+    fuzzy = [entry for entry in report if entry["method"] == "fuzzy"]
+    if fuzzy:
+        raise ValueError(f"{len(fuzzy)} fuzzy answer matches require explicit overrides; see {cache / 'match-report.json'}")
+    subprocess.run([sys.executable, str(project / "Tools" / "audit_answer_matches.py")], check=True)
     subprocess.run([
         sys.executable, str(project / "Tools" / "extract_figures.py"),
         "--reference", str(args.reference),

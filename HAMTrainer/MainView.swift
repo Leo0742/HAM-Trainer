@@ -158,20 +158,56 @@ struct WeakTopicsPanel: View {
     }
 }
 
+private enum WeakQuestionFilter: String, CaseIterable, Identifiable {
+    case all, recent, dontKnow, hard
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .all: "Все слабые"
+        case .recent: "Недавние ошибки"
+        case .dontKnow: "Не знаю"
+        case .hard: "Отмечены сложными"
+        }
+    }
+}
+
 struct WeakQuestionsView: View {
     @EnvironmentObject private var store: AppStore
     @State private var session: StudySession?
-    private var weak: [Question] { store.questions.filter { let p = store.progressFor($0); return p.state == .weak || p.manuallyMarkedHard } }
+    @State private var filter: WeakQuestionFilter = .all
+    private var allWeak: [Question] {
+        store.questions.filter { let progress = store.progressFor($0); return progress.state == .weak || progress.manuallyMarkedHard }
+    }
+    private var weak: [Question] {
+        allWeak.filter { question in
+            let progress = store.progressFor(question)
+            switch filter {
+            case .all: return true
+            case .recent:
+                guard let date = progress.lastFailureAt else { return false }
+                return date >= Date().addingTimeInterval(-7 * 24 * 60 * 60)
+            case .dontKnow: return progress.dontKnowCount > 0
+            case .hard: return progress.manuallyMarkedHard
+            }
+        }
+    }
     var body: some View {
         Group {
             if let session { StudyRunnerView(session: session, onFinish: { self.session = nil }) }
-            else if weak.isEmpty { ContentUnavailableView("Слабых вопросов пока нет", systemImage: "checkmark.circle", description: Text("Они появятся после ошибок, «Не знаю» или ручной отметки.")) }
+            else if allWeak.isEmpty { ContentUnavailableView("Слабых вопросов пока нет", systemImage: "checkmark.circle", description: Text("Они появятся после ошибок, «Не знаю» или ручной отметки.")) }
             else {
                 VStack(alignment: .leading, spacing: 20) {
                     Text("Слабые вопросы").font(.largeTitle.bold())
                     Text("Отдельная тренировка может повторять трудные вопросы чаще. В обычной сессии действует строгий лимит повторов.").foregroundStyle(.secondary)
-                    Button("Тренировать \(weak.count) вопросов") { session = StudySession(questions: weak, drillWeak: true) }.buttonStyle(.borderedProminent)
-                    List(weak) { q in QuestionRow(question: q) }
+                    Picker("Фильтр", selection: $filter) {
+                        ForEach(WeakQuestionFilter.allCases) { Text($0.title).tag($0) }
+                    }.pickerStyle(.segmented)
+                    if weak.isEmpty {
+                        ContentUnavailableView("В этом фильтре вопросов нет", systemImage: "line.3.horizontal.decrease.circle")
+                    } else {
+                        Button("Тренировать \(weak.count) вопросов") { session = StudySession(questions: weak, drillWeak: true) }.buttonStyle(.borderedProminent)
+                        List(weak) { q in QuestionRow(question: q) }
+                    }
                 }.padding(28)
             }
         }.navigationTitle("Слабые вопросы")
