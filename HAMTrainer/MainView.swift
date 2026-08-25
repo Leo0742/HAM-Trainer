@@ -214,20 +214,120 @@ struct TopicsView: View {
     @EnvironmentObject private var store: AppStore
     @State private var selectedTopic: String?
     @State private var session: StudySession?
-    private var topics: [(String, [Question])] { Dictionary(grouping: store.questions, by: \.topic).sorted { $0.key < $1.key } }
+    private var topics: [(String, [Question])] {
+        Dictionary(grouping: store.questions, by: \.topic)
+            .filter { !$0.value.isEmpty }
+            .sorted { $0.key < $1.key }
+    }
+
     var body: some View {
         Group {
             if let session { StudyRunnerView(session: session, onFinish: { self.session = nil }) }
             else {
-                List(topics, id: \.0, selection: $selectedTopic) { topic, questions in
-                    HStack {
-                        VStack(alignment: .leading) { Text(topic).font(.headline); Text("\(questions.count) вопросов").font(.caption).foregroundStyle(.secondary) }
-                        Spacer()
-                        Button("Учить") { session = StudySession(questions: questions, randomizeOptions: store.settings.randomizeOptions) }.buttonStyle(.borderless)
-                    }.padding(.vertical, 5)
-                }.navigationTitle("Темы")
+                NavigationSplitView {
+                    List(topics, id: \.0, selection: $selectedTopic) { topic, questions in
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(topic).font(.headline)
+                                Text("\(questions.count) вопросов").font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
+                        }
+                        .contentShape(Rectangle())
+                        .tag(topic)
+                        .padding(.vertical, 6)
+                    }
+                    .navigationTitle("Темы")
+                    .navigationSplitViewColumnWidth(min: 280, ideal: 340, max: 430)
+                } detail: {
+                    if let selectedTopic,
+                       let questions = topics.first(where: { $0.0 == selectedTopic })?.1 {
+                        TopicReferenceView(topic: selectedTopic, questions: questions) {
+                            session = StudySession(questions: questions, randomizeOptions: store.settings.randomizeOptions)
+                        }
+                    } else {
+                        ContentUnavailableView("Выберите тему", systemImage: "books.vertical", description: Text("Откроется быстрый список вопросов с правильными ответами."))
+                    }
+                }
             }
         }
+    }
+}
+
+struct TopicReferenceView: View {
+    @EnvironmentObject private var store: AppStore
+    let topic: String
+    let questions: [Question]
+    let train: () -> Void
+    @State private var query = ""
+
+    private var filtered: [Question] {
+        questions.sorted { $0.examNumber < $1.examNumber }.filter { $0.matchesReferenceQuery(query) }
+    }
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .top, spacing: 20) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(topic).font(.largeTitle.bold())
+                        Text("\(questions.count) вопросов · ответы видны сразу").foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button("Тренировать тему", action: train).buttonStyle(.borderedProminent).controlSize(.large)
+                }
+                TextField("Номер, вопрос или ответ", text: $query).textFieldStyle(.roundedBorder).frame(maxWidth: 560)
+                ForEach(filtered) { question in
+                    TopicQuestionReferenceRow(question: question)
+                }
+            }
+            .padding(28)
+            .frame(maxWidth: store.settings.readingSize.contentMaxWidth, alignment: .leading)
+        }
+        .navigationTitle(topic)
+    }
+}
+
+struct TopicQuestionReferenceRow: View {
+    @EnvironmentObject private var store: AppStore
+    let question: Question
+    @State private var expanded: Bool
+
+    init(question: Question, initiallyExpanded: Bool = false) {
+        self.question = question
+        _expanded = State(initialValue: initiallyExpanded)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Button { expanded.toggle() } label: {
+                HStack(alignment: .top, spacing: 12) {
+                    Text("№ \(question.examNumber)").font(.callout.monospacedDigit()).foregroundStyle(.secondary).frame(width: 58, alignment: .leading)
+                    Text(question.stem).font(.system(size: store.settings.readingSize.metadataFontSize, weight: .semibold)).frame(maxWidth: .infinity, alignment: .leading)
+                    Image(systemName: expanded ? "chevron.up" : "chevron.down").foregroundStyle(.secondary)
+                }
+            }.buttonStyle(.plain)
+            Text("Ответ: \(question.officialCorrectAnswerText)")
+                .font(.system(size: store.settings.readingSize.answerFontSize, weight: .semibold))
+                .foregroundStyle(.tint)
+                .padding(.leading, 70)
+            if expanded {
+                Divider().padding(.leading, 70)
+                VStack(alignment: .leading, spacing: 14) {
+                    FigureView(asset: question.figureAsset)
+                    if question.teachingDiagramAsset != question.figureAsset { FigureView(asset: question.teachingDiagramAsset) }
+                    if !question.explanationShort.isEmpty {
+                        Text(question.explanationShort).font(.callout).foregroundStyle(.secondary)
+                    }
+                    ReferenceDetailsView(question: question, includeOptions: true)
+                    DisclosureGroup("Источник и примечания") { SourceView(question: question).padding(.top, 8) }
+                }.padding(.leading, 70)
+            }
+        }
+        .padding(18)
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(.quaternary))
     }
 }
 
@@ -237,12 +337,9 @@ struct QuestionRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Text("№ \(question.examNumber)").font(.callout.monospacedDigit()).foregroundStyle(.secondary).frame(width: 52, alignment: .leading)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(question.stem).font(.system(size: store.settings.readingSize.metadataFontSize)).lineLimit(2)
-                Text(question.topic).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-            }
+            Text(question.stem).font(.system(size: store.settings.readingSize.metadataFontSize)).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
             Spacer()
-            Text(store.progressFor(question).state.title).font(.caption).padding(.horizontal, 8).padding(.vertical, 4).background(.quaternary, in: Capsule())
+            if store.progressFor(question).bookmarked { Image(systemName: "bookmark.fill").font(.caption).foregroundStyle(.tint) }
         }.padding(.vertical, 4)
     }
 }
@@ -317,22 +414,92 @@ struct QuestionDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                Text("Вопрос № \(question.examNumber)").font(.title2.bold())
-                Text(question.topic).font(.callout).foregroundStyle(.secondary)
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Вопрос № \(question.examNumber)").font(.title2.bold())
+                        Text(question.topic).font(.callout).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button { store.toggleBookmark(question) } label: {
+                        Label(store.progressFor(question).bookmarked ? "В закладках" : "Закладка", systemImage: store.progressFor(question).bookmarked ? "bookmark.fill" : "bookmark")
+                    }
+                    Button { store.toggleHard(question) } label: {
+                        Label(store.progressFor(question).manuallyMarkedHard ? "Сложный" : "Отметить сложным", systemImage: store.progressFor(question).manuallyMarkedHard ? "flag.fill" : "flag")
+                    }
+                }
                 Text(question.stem).font(.system(size: store.settings.readingSize.questionFontSize, weight: .semibold))
                 FigureView(asset: question.figureAsset)
                 if question.teachingDiagramAsset != question.figureAsset { FigureView(asset: question.teachingDiagramAsset) }
-                ForEach(question.options) { option in
-                    HStack { Image(systemName: option.id == question.correctOptionId ? "checkmark.circle.fill" : "circle").foregroundStyle(option.id == question.correctOptionId ? .green : .secondary); Text(option.text).font(.system(size: store.settings.readingSize.answerFontSize)) }
-                        .padding(store.settings.readingSize.answerPadding).frame(maxWidth: .infinity, alignment: .leading).background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Правильный ответ").font(.callout).foregroundStyle(.secondary)
+                        Text(question.officialCorrectAnswerText).font(.system(size: store.settings.readingSize.answerFontSize, weight: .bold)).foregroundStyle(.tint)
+                        Text(question.explanationShort).font(.system(size: store.settings.readingSize.explanationFontSize))
+                    }.frame(maxWidth: .infinity, alignment: .leading).padding(6)
                 }
-                ExplanationView(question: question)
+                ReferenceDetailsView(question: question, includeOptions: true)
                 DisclosureGroup("Личная заметка") {
                     QuestionNoteEditor(question: question)
                 }
-                SourceView(question: question)
+                DisclosureGroup("Источник и примечания") { SourceView(question: question).padding(.top, 8) }
             }.padding(28).frame(maxWidth: store.settings.readingSize.contentMaxWidth, alignment: .leading)
         }.background(Color(nsColor: .windowBackgroundColor))
+    }
+}
+
+struct ReferenceDetailsView: View {
+    @EnvironmentObject private var store: AppStore
+    let question: Question
+    let includeOptions: Bool
+
+    private var glossaryEntries: [GlossaryEntry] {
+        question.glossaryTerms.compactMap { id in store.glossary.first(where: { $0.id == id }) }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if includeOptions {
+                DisclosureGroup("Показать все варианты") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(question.options) { option in
+                            HStack(alignment: .top, spacing: 8) {
+                                Image(systemName: option.id == question.correctOptionId ? "checkmark.circle.fill" : "circle")
+                                    .foregroundStyle(option.id == question.correctOptionId ? .green : .secondary)
+                                Text(option.text).font(.system(size: store.settings.readingSize.answerFontSize))
+                            }
+                        }
+                    }.padding(.top, 8)
+                }
+            }
+            DisclosureGroup("С нуля") {
+                Text(question.explanationBeginner).font(.system(size: store.settings.readingSize.explanationFontSize)).padding(.top, 8)
+            }
+            DisclosureGroup("Почему") {
+                Text(question.explanationReasoning).font(.system(size: store.settings.readingSize.explanationFontSize)).padding(.top, 8)
+            }
+            DisclosureGroup("Другие ответы") {
+                VStack(alignment: .leading, spacing: 14) {
+                    ForEach(question.options.filter { $0.id != question.correctOptionId }) { option in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(option.text).fontWeight(.semibold)
+                            Text(question.wrongOptionExplanations[option.id] ?? "").foregroundStyle(.secondary)
+                        }
+                    }
+                }.padding(.top, 8)
+            }
+            if !glossaryEntries.isEmpty {
+                DisclosureGroup("Термины") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        ForEach(glossaryEntries) { entry in
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(entry.term).fontWeight(.semibold)
+                                Text(entry.shortDefinition).foregroundStyle(.secondary)
+                            }
+                        }
+                    }.padding(.top, 8)
+                }
+            }
+        }
     }
 }
 

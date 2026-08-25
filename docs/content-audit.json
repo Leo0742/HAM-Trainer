@@ -31,12 +31,19 @@
     "uniqueExamNumbers": 405,
     "resolvedCorrectOptionIds": 405,
     "unchangedOfficialStems": 405,
-    "unchangedOfficialOptionSets": 405
+    "verifiedOfficialOptionSets": 405
   },
   "answerMatching": {
     "exact": 400,
     "manual": 5,
     "unresolvedFuzzy": 0,
+    "unresolved": []
+  },
+  "fullOptionAudit": {
+    "questionsChecked": 405,
+    "optionsChecked": 1620,
+    "sourceExactOptionSets": 400,
+    "explicitSourceCheckedOptionOverrides": 5,
     "unresolved": []
   },
   "glossary": {
@@ -48,7 +55,7 @@
     "identicalNormalizedShortAndFromZero": []
   },
   "assets": {
-    "examFigures": 26,
+    "examFigures": 27,
     "teachingDiagrams": 9,
     "missingAssets": [],
     "unresolvedRequestedExamFigures": []

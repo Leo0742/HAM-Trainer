@@ -37,6 +37,14 @@ struct Question: Codable, Hashable, Identifiable, Sendable {
     let legalHistoricalNote: String?
 }
 
+extension Question {
+    func matchesReferenceQuery(_ query: String) -> Bool {
+        guard !query.isEmpty else { return true }
+        return "\(examNumber) \(stem) \(officialCorrectAnswerText)"
+            .localizedCaseInsensitiveContains(query)
+    }
+}
+
 struct GlossaryEntry: Hashable, Identifiable, Sendable {
     let id: String
     let term: String

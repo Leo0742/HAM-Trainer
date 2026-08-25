@@ -1,0 +1,535 @@
+{
+  "schemaVersion": 1,
+  "renderDPI": 220,
+  "answerKeyExcluded": true,
+  "questions": [
+    {
+      "examNumber": 32,
+      "sourceDocument": "Справочник_КЭ.pdf",
+      "sourcePDFPage": 127,
+      "crop": {
+        "baseDPI": 130,
+        "x": 125,
+        "y": 540,
+        "width": 835,
+        "height": 610
+      },
+      "asset": "diagrams/questions/q-032.png",
+      "purpose": "Figure 2 HAREC national-license table",
+      "visuallyInspected": true,
+      "answerKeyExcluded": true
+    },
+    {
+      "examNumber": 136,
+      "sourceDocument": "Справочник_КЭ.pdf",
+      "sourcePDFPage": 151,
+      "crop": {
+        "baseDPI": 130,
+        "x": 125,
+        "y": 740,
+        "width": 750,
+        "height": 410
+      },
+      "asset": "diagrams/questions/q-136.png",
+      "purpose": "Three waveform variants",
+      "visuallyInspected": true,
+      "answerKeyExcluded": true
+    },
+    {
+      "examNumber": 137,
+      "sourceDocument": "Справочник_КЭ.pdf",
+      "sourcePDFPage": 152,
+      "crop": {
+        "baseDPI": 130,
+        "x": 130,
+        "y": 295,
+        "width": 390,
+        "height": 370
+      },
+      "asset": "diagrams/questions/q-137.png",
+      "purpose": "Four spectrum variants",
+      "visuallyInspected": true,
+      "answerKeyExcluded": true
+    },
+    {
+      "examNumber": 138,
+      "sourceDocument": "Справочник_КЭ.pdf",
+      "sourcePDFPage": 152,
+      "crop": {
+        "baseDPI": 130,
+        "x": 130,
+        "y": 875,
+        "width": 390,
+        "height": 370
+      },
+      "asset": "diagrams/questions/q-138.png",
+      "purpose": "Four spectrum variants",
+      "visuallyInspected": true,
+      "answerKeyExcluded": true
+    },
+    {
+      "examNumber": 139,
+      "sourceDocument": "Справочник_КЭ.pdf",
+      "sourcePDFPage": 153,
+      "crop": {
+        "baseDPI": 130,
+        "x": 130,
+        "y": 295,
+        "width": 390,
+        "height": 370
+      },
+      "asset": "diagrams/questions/q-139.png",
+      "purpose": "Four spectrum variants",
+      "visuallyInspected": true,
+      "answerKeyExcluded": true
+    },
+    {
+      "examNumber": 140,
+      "sourceDocument": "Справочник_КЭ.pdf",
+      "sourcePDFPage": 153,
+      "crop": {
+        "baseDPI": 130,
+        "x": 130,
+        "y": 875,
+        "width": 390,
+        "height": 370
+      },
+      "asset": "diagrams/questions/q-140.png",
+      "purpose": "Four spectrum variants",
+      "visuallyInspected": true,
+      "answerKeyExcluded": true
+    },
+    {
+      "examNumber": 141,
+      "sourceDocument": "Справочник_КЭ.pdf",
+      "sourcePDFPage": 154,
+      "crop": {
+        "baseDPI": 130,
+        "x": 130,
+        "y": 295,
+        "width": 390,
+        "height": 370
+      },
+      "asset": "diagrams/questions/q-141.png",
+      "purpose": "Four spectrum variants",
+      "visuallyInspected": true,
+      "answerKeyExcluded": true
+    },
+    {
+      "examNumber": 142,
+      "sourceDocument": "Справочник_КЭ.pdf",
+      "sourcePDFPage": 154,
+      "crop": {
+        "baseDPI": 130,
+        "x": 130,
+        "y": 875,
+        "width": 390,
+        "height": 370
+      },
+      "asset": "diagrams/questions/q-142.png",
+      "purpose": "Four spectrum variants",
+      "visuallyInspected": true,
+      "answerKeyExcluded": true
+    },
+    {
+      "examNumber": 173,
+      "sourceDocument": "Справочник_КЭ.pdf",
+      "sourcePDFPage": 162,
+      "crop": {
+        "baseDPI": 160,
+        "x": 145,
+        "y": 275,
+        "width": 340,
+        "height": 190
+      },
+      "asset": "diagrams/questions/fm-transmitter.png",
+      "purpose": "Shared neutral FM-transmitter block diagram",
+      "visuallyInspected": true,
+      "answerKeyExcluded": true
+    },
+    {
+      "examNumber": 174,
+      "sourceDocument": "Справочник_КЭ.pdf",
+      "sourcePDFPage": 162,
+      "crop": {
+        "baseDPI": 160,
+        "x": 145,
+        "y": 275,
+        "width": 340,
+        "height": 190
+      },
+      "asset": "diagrams/questions/fm-transmitter.png",
+      "purpose": "Shared neutral FM-transmitter block diagram",
+      "visuallyInspected": true,
+      "answerKeyExcluded": true
+    },
+    {
+      "examNumber": 175,
+      "sourceDocument": "Справочник_КЭ.pdf",
+      "sourcePDFPage": 162,
+      "crop": {
+        "baseDPI": 160,
+        "x": 145,
+        "y": 275,
+        "width": 340,
+        "height": 190
+      },
+      "asset": "diagrams/questions/fm-transmitter.png",
+      "purpose": "Shared neutral FM-transmitter block diagram",
+      "visuallyInspected": true,
+      "answerKeyExcluded": true
+    },
+    {
+      "examNumber": 176,
+      "sourceDocument": "Справочник_КЭ.pdf",
+      "sourcePDFPage": 162,
+      "crop": {
+        "baseDPI": 160,
+        "x": 145,
+        "y": 275,
+        "width": 340,
+        "height": 190
+      },
+      "asset": "diagrams/questions/fm-transmitter.png",
+      "purpose": "Shared neutral FM-transmitter block diagram",
+      "visuallyInspected": true,
+      "answerKeyExcluded": true
+    },
+    {
+      "examNumber": 177,
+      "sourceDocument": "Справочник_КЭ.pdf",
+      "sourcePDFPage": 163,
+      "crop": {
+        "baseDPI": 160,
+        "x": 140,
+        "y": 580,
+        "width": 345,
+        "height": 165
+      },
+      "asset": "diagrams/questions/superhet-receiver.png",
+      "purpose": "Shared neutral superheterodyne receiver block diagram",
+      "visuallyInspected": true,
+      "answerKeyExcluded": true
+    },
+    {
+      "examNumber": 178,
+      "sourceDocument": "Справочник_КЭ.pdf",
+      "sourcePDFPage": 163,
+      "crop": {
+        "baseDPI": 160,
+        "x": 140,
+        "y": 580,
+        "width": 345,
+        "height": 165
+      },
+      "asset": "diagrams/questions/superhet-receiver.png",
+      "purpose": "Shared neutral superheterodyne receiver block diagram",
+      "visuallyInspected": true,
+      "answerKeyExcluded": true
+    },
+    {
+      "examNumber": 179,
+      "sourceDocument": "Справочник_КЭ.pdf",
+      "sourcePDFPage": 163,
+      "crop": {
+        "baseDPI": 160,
+        "x": 140,
+        "y": 580,
+        "width": 345,
+        "height": 165
+      },
+      "asset": "diagrams/questions/superhet-receiver.png",
+      "purpose": "Shared neutral superheterodyne receiver block diagram",
+      "visuallyInspected": true,
+      "answerKeyExcluded": true
+    },
+    {
+      "examNumber": 180,
+      "sourceDocument": "Справочник_КЭ.pdf",
+      "sourcePDFPage": 163,
+      "crop": {
+        "baseDPI": 160,
+        "x": 140,
+        "y": 580,
+        "width": 345,
+        "height": 165
+      },
+      "asset": "diagrams/questions/superhet-receiver.png",
+      "purpose": "Shared neutral superheterodyne receiver block diagram",
+      "visuallyInspected": true,
+      "answerKeyExcluded": true
+    },
+    {
+      "examNumber": 263,
+      "sourceDocument": "Справочник_КЭ.pdf",
+      "sourcePDFPage": 181,
+      "crop": {
+        "baseDPI": 130,
+        "x": 125,
+        "y": 820,
+        "width": 750,
+        "height": 395
+      },
+      "asset": "diagrams/questions/q-263.png",
+      "purpose": "Three waveform variants",
+      "visuallyInspected": true,
+      "answerKeyExcluded": true
+    },
+    {
+      "examNumber": 322,
+      "sourceDocument": "Справочник_КЭ.pdf",
+      "sourcePDFPage": 196,
+      "crop": {
+        "baseDPI": 130,
+        "x": 135,
+        "y": 575,
+        "width": 400,
+        "height": 340
+      },
+      "asset": "diagrams/questions/q-322.png",
+      "purpose": "Four filter circuit variants",
+      "visuallyInspected": true,
+      "answerKeyExcluded": true
+    },
+    {
+      "examNumber": 323,
+      "sourceDocument": "Справочник_КЭ.pdf",
+      "sourcePDFPage": 196,
+      "crop": {
+        "baseDPI": 130,
+        "x": 135,
+        "y": 1020,
+        "width": 400,
+        "height": 330
+      },
+      "asset": "diagrams/questions/q-323.png",
+      "purpose": "Four filter circuit variants",
+      "visuallyInspected": true,
+      "answerKeyExcluded": true
+    },
+    {
+      "examNumber": 326,
+      "sourceDocument": "Справочник_КЭ.pdf",
+      "sourcePDFPage": 197,
+      "crop": {
+        "baseDPI": 130,
+        "x": 130,
+        "y": 1000,
+        "width": 750,
+        "height": 330
+      },
+      "asset": "diagrams/questions/q-326.png",
+      "purpose": "Four rectifier circuit variants",
+      "visuallyInspected": true,
+      "answerKeyExcluded": true
+    },
+    {
+      "examNumber": 327,
+      "sourceDocument": "Справочник_КЭ.pdf",
+      "sourcePDFPage": 198,
+      "crop": {
+        "baseDPI": 130,
+        "x": 130,
+        "y": 370,
+        "width": 750,
+        "height": 285
+      },
+      "asset": "diagrams/questions/q-327.png",
+      "purpose": "Four rectifier circuit variants",
+      "visuallyInspected": true,
+      "answerKeyExcluded": true
+    },
+    {
+      "examNumber": 328,
+      "sourceDocument": "Справочник_КЭ.pdf",
+      "sourcePDFPage": 198,
+      "crop": {
+        "baseDPI": 130,
+        "x": 130,
+        "y": 880,
+        "width": 750,
+        "height": 315
+      },
+      "asset": "diagrams/questions/q-328.png",
+      "purpose": "Four rectifier circuit variants",
+      "visuallyInspected": true,
+      "answerKeyExcluded": true
+    },
+    {
+      "examNumber": 331,
+      "sourceDocument": "Справочник_КЭ.pdf",
+      "sourcePDFPage": 199,
+      "crop": {
+        "baseDPI": 130,
+        "x": 130,
+        "y": 1030,
+        "width": 355,
+        "height": 390
+      },
+      "asset": "diagrams/questions/q-331.png",
+      "purpose": "Two detector circuit variants",
+      "visuallyInspected": true,
+      "answerKeyExcluded": true
+    },
+    {
+      "examNumber": 332,
+      "sourceDocument": "Справочник_КЭ.pdf",
+      "sourcePDFPage": 200,
+      "crop": {
+        "baseDPI": 130,
+        "x": 130,
+        "y": 285,
+        "width": 355,
+        "height": 340
+      },
+      "asset": "diagrams/questions/q-332.png",
+      "purpose": "Two detector circuit variants",
+      "visuallyInspected": true,
+      "answerKeyExcluded": true
+    },
+    {
+      "examNumber": 341,
+      "sourceDocument": "Справочник_КЭ.pdf",
+      "sourcePDFPage": 202,
+      "crop": {
+        "baseDPI": 130,
+        "x": 135,
+        "y": 470,
+        "width": 830,
+        "height": 540
+      },
+      "asset": "diagrams/questions/q-341.png",
+      "purpose": "Two receiver block-diagram variants",
+      "visuallyInspected": true,
+      "answerKeyExcluded": true
+    },
+    {
+      "examNumber": 342,
+      "sourceDocument": "Справочник_КЭ.pdf",
+      "sourcePDFPage": 203,
+      "crop": {
+        "baseDPI": 130,
+        "x": 135,
+        "y": 125,
+        "width": 830,
+        "height": 540
+      },
+      "asset": "diagrams/questions/q-342.png",
+      "purpose": "Two receiver block-diagram variants",
+      "visuallyInspected": true,
+      "answerKeyExcluded": true
+    },
+    {
+      "examNumber": 343,
+      "sourceDocument": "Справочник_КЭ.pdf",
+      "sourcePDFPage": 203,
+      "crop": {
+        "baseDPI": 130,
+        "x": 135,
+        "y": 840,
+        "width": 830,
+        "height": 500
+      },
+      "asset": "diagrams/questions/q-343.png",
+      "purpose": "Two receiver block-diagram variants",
+      "visuallyInspected": true,
+      "answerKeyExcluded": true
+    },
+    {
+      "examNumber": 344,
+      "sourceDocument": "Справочник_КЭ.pdf",
+      "sourcePDFPage": 204,
+      "crop": {
+        "baseDPI": 130,
+        "x": 130,
+        "y": 405,
+        "width": 835,
+        "height": 455
+      },
+      "asset": "diagrams/questions/q-344.png",
+      "purpose": "Two receiver block-diagram variants",
+      "visuallyInspected": true,
+      "answerKeyExcluded": true
+    },
+    {
+      "examNumber": 353,
+      "sourceDocument": "Справочник_КЭ.pdf",
+      "sourcePDFPage": 207,
+      "crop": {
+        "baseDPI": 130,
+        "x": 130,
+        "y": 100,
+        "width": 835,
+        "height": 470
+      },
+      "asset": "diagrams/questions/q-353.png",
+      "purpose": "Two transmitter block-diagram variants",
+      "visuallyInspected": true,
+      "answerKeyExcluded": true
+    },
+    {
+      "examNumber": 354,
+      "sourceDocument": "Справочник_КЭ.pdf",
+      "sourcePDFPage": 207,
+      "crop": {
+        "baseDPI": 130,
+        "x": 130,
+        "y": 845,
+        "width": 835,
+        "height": 490
+      },
+      "asset": "diagrams/questions/q-354.png",
+      "purpose": "Two transmitter block-diagram variants",
+      "visuallyInspected": true,
+      "answerKeyExcluded": true
+    },
+    {
+      "examNumber": 355,
+      "sourceDocument": "Справочник_КЭ.pdf",
+      "sourcePDFPage": 208,
+      "crop": {
+        "baseDPI": 130,
+        "x": 125,
+        "y": 380,
+        "width": 835,
+        "height": 455
+      },
+      "asset": "diagrams/questions/q-355.png",
+      "purpose": "Two transmitter block-diagram variants",
+      "visuallyInspected": true,
+      "answerKeyExcluded": true
+    },
+    {
+      "examNumber": 406,
+      "sourceDocument": "Справочник_КЭ.pdf",
+      "sourcePDFPage": 221,
+      "crop": {
+        "baseDPI": 130,
+        "x": 125,
+        "y": 115,
+        "width": 525,
+        "height": 455
+      },
+      "asset": "diagrams/questions/q-406.png",
+      "purpose": "Two linearity-test setup variants",
+      "visuallyInspected": true,
+      "answerKeyExcluded": true
+    },
+    {
+      "examNumber": 407,
+      "sourceDocument": "Справочник_КЭ.pdf",
+      "sourcePDFPage": 221,
+      "crop": {
+        "baseDPI": 130,
+        "x": 125,
+        "y": 745,
+        "width": 445,
+        "height": 600
+      },
+      "asset": "diagrams/questions/q-407.png",
+      "purpose": "Four two-tone waveform variants",
+      "visuallyInspected": true,
+      "answerKeyExcluded": true
+    }
+  ]
+}
