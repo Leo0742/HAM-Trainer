@@ -16,13 +16,17 @@ ROOT = Path(__file__).resolve().parents[1]
 # the following page. The displayed asset is therefore mapped independently of
 # the question's provenance page and contains only the diagram, never the red
 # answer key printed beside it.
-FIGURE_PAGES = {
-    32: 127,
-    136: 151, 137: 152, 138: 152, 139: 153, 140: 153, 141: 154, 142: 154,
-    180: 163,
-    263: 181, 322: 196, 323: 196, 326: 197, 327: 198, 328: 198,
-    331: 199, 332: 200, 341: 202, 342: 203, 343: 203, 344: 204,
-    353: 207, 354: 207, 355: 208, 406: 221, 407: 221,
+FIGURE_ASSETS = {
+    32: "diagrams/questions/q-032.png",
+    **{number: f"diagrams/questions/q-{number:03d}.png" for number in range(136, 143)},
+    **{number: "diagrams/questions/fm-transmitter.png" for number in range(173, 177)},
+    **{number: "diagrams/questions/superhet-receiver.png" for number in range(177, 181)},
+    263: "diagrams/questions/q-263.png",
+    **{number: f"diagrams/questions/q-{number:03d}.png" for number in (322, 323, 326, 327, 328, 331, 332)},
+    **{number: f"diagrams/questions/q-{number:03d}.png" for number in range(341, 345)},
+    **{number: f"diagrams/questions/q-{number:03d}.png" for number in range(353, 356)},
+    406: "diagrams/questions/q-406.png",
+    407: "diagrams/questions/q-407.png",
 }
 
 # id, displayed term, aliases separated by |, beginner definition, radio example
@@ -419,7 +423,7 @@ def apply_authored(question: dict, record: dict, entries: list[dict]) -> dict:
         value[field] = record[field]
     value["wrongOptionExplanations"] = bind_wrong_options(value, record)
     value["glossaryTerms"] = resolve_glossary_terms(record.get("glossaryTerms", []), entries, value["examNumber"])
-    value["useExamFigure"] = bool(record.get("useExamFigure", False))
+    value["useExamFigure"] = bool(record.get("useExamFigure", False)) or value["examNumber"] in FIGURE_ASSETS
     value["sourceExtractionNote"] = record.get("sourceExtractionNote")
     diagram_key = record.get("teachingDiagramKey")
     if diagram_key:
@@ -429,8 +433,8 @@ def apply_authored(question: dict, record: dict, entries: list[dict]) -> dict:
         value["teachingDiagramAsset"] = asset
     else:
         value["teachingDiagramAsset"] = None
-    if value["examNumber"] in FIGURE_PAGES:
-        value["figureAsset"] = f"diagrams/questions/q-{value['examNumber']:03d}.png"
+    if value["examNumber"] in FIGURE_ASSETS:
+        value["figureAsset"] = FIGURE_ASSETS[value["examNumber"]]
     if value["useExamFigure"] and not value.get("figureAsset"):
         raise ValueError(f"question {value['examNumber']}: requested exam figure is unresolved")
     return value
@@ -451,6 +455,16 @@ def main() -> None:
         for key in ("correctOptionId", "sourceReference", "legalHistoricalNote", "figureAsset"):
             if key in override:
                 value[key] = override[key]
+        option_text = override.get("optionTextById", {})
+        if option_text:
+            option_ids = {option["id"] for option in value["options"]}
+            unknown = set(option_text) - option_ids
+            if unknown:
+                raise ValueError(f"question {value['examNumber']}: unknown optionTextById IDs {sorted(unknown)}")
+            value["options"] = [
+                {**option, "text": option_text.get(option["id"], option["text"])}
+                for option in value["options"]
+            ]
         value = apply_authored(value, authored[str(question["examNumber"])], entries)
         questions.append(value)
 

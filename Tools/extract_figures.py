@@ -1,45 +1,52 @@
 #!/usr/bin/env python3
-"""Render answer-free, question-specific study figures from the reference PDF."""
+"""Deterministically extract the visually audited category-2 exam figures."""
 
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
 import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+OUTPUT_DPI = 220
 
-# question: (PDF page, top, left, height, width), at 130 dpi.
-# Crops deliberately exclude the printed red answer key.
-CROPS = {
-    32: (127, 540, 125, 610, 835),
-    136: (151, 740, 125, 410, 750),
-    137: (152, 295, 130, 370, 390),
-    138: (152, 875, 130, 370, 390),
-    139: (153, 295, 130, 370, 390),
-    140: (153, 875, 130, 370, 390),
-    141: (154, 295, 130, 370, 390),
-    142: (154, 875, 130, 370, 390),
-    180: (163, 465, 120, 150, 260),
-    263: (181, 820, 125, 395, 750),
-    322: (196, 575, 135, 340, 400),
-    323: (196, 1020, 135, 330, 400),
-    326: (197, 1000, 130, 330, 750),
-    327: (198, 370, 130, 285, 750),
-    328: (198, 880, 130, 315, 750),
-    331: (199, 1030, 130, 390, 355),
-    332: (200, 285, 130, 340, 355),
-    341: (202, 470, 135, 540, 830),
-    342: (203, 125, 135, 540, 830),
-    343: (203, 840, 135, 500, 830),
-    344: (204, 405, 130, 455, 835),
-    353: (207, 100, 130, 470, 835),
-    354: (207, 845, 130, 490, 835),
-    355: (208, 380, 125, 455, 835),
-    406: (221, 115, 125, 455, 525),
-    407: (221, 745, 125, 600, 445),
+# Every crop was visually checked against the preserved source PDF. Coordinates
+# are x, y, width, height at baseDPI and deliberately exclude the red answer key.
+ASSETS = {
+    "q-032.png": {"page": 127, "baseDPI": 130, "crop": (125, 540, 835, 610), "questions": [32], "purpose": "Figure 2 HAREC national-license table"},
+    "q-136.png": {"page": 151, "baseDPI": 130, "crop": (125, 740, 750, 410), "questions": [136], "purpose": "Three waveform variants"},
+    "q-137.png": {"page": 152, "baseDPI": 130, "crop": (130, 295, 390, 370), "questions": [137], "purpose": "Four spectrum variants"},
+    "q-138.png": {"page": 152, "baseDPI": 130, "crop": (130, 875, 390, 370), "questions": [138], "purpose": "Four spectrum variants"},
+    "q-139.png": {"page": 153, "baseDPI": 130, "crop": (130, 295, 390, 370), "questions": [139], "purpose": "Four spectrum variants"},
+    "q-140.png": {"page": 153, "baseDPI": 130, "crop": (130, 875, 390, 370), "questions": [140], "purpose": "Four spectrum variants"},
+    "q-141.png": {"page": 154, "baseDPI": 130, "crop": (130, 295, 390, 370), "questions": [141], "purpose": "Four spectrum variants"},
+    "q-142.png": {"page": 154, "baseDPI": 130, "crop": (130, 875, 390, 370), "questions": [142], "purpose": "Four spectrum variants"},
+    "fm-transmitter.png": {"page": 162, "baseDPI": 160, "crop": (145, 275, 340, 190), "questions": [173, 174, 175, 176], "purpose": "Shared neutral FM-transmitter block diagram"},
+    "superhet-receiver.png": {"page": 163, "baseDPI": 160, "crop": (140, 580, 345, 165), "questions": [177, 178, 179, 180], "purpose": "Shared neutral superheterodyne receiver block diagram"},
+    "q-263.png": {"page": 181, "baseDPI": 130, "crop": (125, 820, 750, 395), "questions": [263], "purpose": "Three waveform variants"},
+    "q-322.png": {"page": 196, "baseDPI": 130, "crop": (135, 575, 400, 340), "questions": [322], "purpose": "Four filter circuit variants"},
+    "q-323.png": {"page": 196, "baseDPI": 130, "crop": (135, 1020, 400, 330), "questions": [323], "purpose": "Four filter circuit variants"},
+    "q-326.png": {"page": 197, "baseDPI": 130, "crop": (130, 1000, 750, 330), "questions": [326], "purpose": "Four rectifier circuit variants"},
+    "q-327.png": {"page": 198, "baseDPI": 130, "crop": (130, 370, 750, 285), "questions": [327], "purpose": "Four rectifier circuit variants"},
+    "q-328.png": {"page": 198, "baseDPI": 130, "crop": (130, 880, 750, 315), "questions": [328], "purpose": "Four rectifier circuit variants"},
+    "q-331.png": {"page": 199, "baseDPI": 130, "crop": (130, 1030, 355, 390), "questions": [331], "purpose": "Two detector circuit variants"},
+    "q-332.png": {"page": 200, "baseDPI": 130, "crop": (130, 285, 355, 340), "questions": [332], "purpose": "Two detector circuit variants"},
+    "q-341.png": {"page": 202, "baseDPI": 130, "crop": (135, 470, 830, 540), "questions": [341], "purpose": "Two receiver block-diagram variants"},
+    "q-342.png": {"page": 203, "baseDPI": 130, "crop": (135, 125, 830, 540), "questions": [342], "purpose": "Two receiver block-diagram variants"},
+    "q-343.png": {"page": 203, "baseDPI": 130, "crop": (135, 840, 830, 500), "questions": [343], "purpose": "Two receiver block-diagram variants"},
+    "q-344.png": {"page": 204, "baseDPI": 130, "crop": (130, 405, 835, 455), "questions": [344], "purpose": "Two receiver block-diagram variants"},
+    "q-353.png": {"page": 207, "baseDPI": 130, "crop": (130, 100, 835, 470), "questions": [353], "purpose": "Two transmitter block-diagram variants"},
+    "q-354.png": {"page": 207, "baseDPI": 130, "crop": (130, 845, 835, 490), "questions": [354], "purpose": "Two transmitter block-diagram variants"},
+    "q-355.png": {"page": 208, "baseDPI": 130, "crop": (125, 380, 835, 455), "questions": [355], "purpose": "Two transmitter block-diagram variants"},
+    "q-406.png": {"page": 221, "baseDPI": 130, "crop": (125, 115, 525, 455), "questions": [406], "purpose": "Two linearity-test setup variants"},
+    "q-407.png": {"page": 221, "baseDPI": 130, "crop": (125, 745, 445, 600), "questions": [407], "purpose": "Four two-tone waveform variants"},
 }
+
+
+def scaled(value: int, base_dpi: int) -> int:
+    return round(value * OUTPUT_DPI / base_dpi)
 
 
 def main() -> None:
@@ -49,29 +56,51 @@ def main() -> None:
     args = parser.parse_args()
     if not args.reference.is_file():
         raise SystemExit(f"Reference PDF not found: {args.reference}")
-    if shutil.which("pdftoppm") is None or shutil.which("sips") is None:
-        raise SystemExit("pdftoppm and macOS sips are required")
+    if shutil.which("pdftoppm") is None:
+        raise SystemExit("pdftoppm is required")
 
-    cache = ROOT / ".build" / "figure-pages"
-    cache.mkdir(parents=True, exist_ok=True)
     args.output.mkdir(parents=True, exist_ok=True)
-    rendered: dict[int, Path] = {}
-    for page in sorted({value[0] for value in CROPS.values()}):
-        target = cache / f"page-{page}.png"
+    expected_files = set(ASSETS) | {"figure-manifest.json"}
+    for stale in args.output.iterdir():
+        if stale.is_file() and stale.name not in expected_files and stale.suffix == ".png":
+            stale.unlink()
+
+    question_entries = []
+    for filename, spec in ASSETS.items():
+        base_dpi = int(spec["baseDPI"])
+        x, y, width, height = (scaled(value, base_dpi) for value in spec["crop"])
+        target = args.output / filename
         subprocess.run([
-            "pdftoppm", "-f", str(page), "-l", str(page), "-r", "130", "-png", "-singlefile",
+            "pdftoppm", "-f", str(spec["page"]), "-l", str(spec["page"]),
+            "-r", str(OUTPUT_DPI), "-png", "-singlefile",
+            "-x", str(x), "-y", str(y), "-W", str(width), "-H", str(height),
             str(args.reference), str(target.with_suffix("")),
         ], check=True)
-        rendered[page] = target
+        if target.stat().st_size == 0:
+            raise SystemExit(f"empty extracted asset: {target}")
+        crop = {"baseDPI": base_dpi, "x": spec["crop"][0], "y": spec["crop"][1], "width": spec["crop"][2], "height": spec["crop"][3]}
+        for number in spec["questions"]:
+            question_entries.append({
+                "examNumber": number,
+                "sourceDocument": "Справочник_КЭ.pdf",
+                "sourcePDFPage": spec["page"],
+                "crop": crop,
+                "asset": f"diagrams/questions/{filename}",
+                "purpose": spec["purpose"],
+                "visuallyInspected": True,
+                "answerKeyExcluded": True,
+            })
 
-    for number, (page, top, left, height, width) in CROPS.items():
-        target = args.output / f"q-{number:03d}.png"
-        shutil.copyfile(rendered[page], target)
-        subprocess.run([
-            "sips", "-c", str(height), str(width), "--cropOffset", str(top), str(left),
-            str(target), "--out", str(target),
-        ], check=True, stdout=subprocess.DEVNULL)
-    print(f"Extracted {len(CROPS)} answer-free figures to {args.output}")
+    manifest = {
+        "schemaVersion": 1,
+        "renderDPI": OUTPUT_DPI,
+        "answerKeyExcluded": True,
+        "questions": sorted(question_entries, key=lambda item: item["examNumber"]),
+    }
+    (args.output / "figure-manifest.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    print(f"Extracted {len(ASSETS)} audited assets for {len(question_entries)} figure questions")
 
 
 if __name__ == "__main__":

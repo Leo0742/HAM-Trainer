@@ -75,6 +75,18 @@ struct SnapshotRootView: View {
     var body: some View {
         Group {
             if let snapshotMode, snapshotMode.hasPrefix("study-") { StudySnapshotView(mode: snapshotMode) }
+            else if snapshotMode == "topic-reference",
+                    let group = Dictionary(grouping: store.questions, by: \.topic).max(by: { $0.value.count < $1.value.count }) {
+                TopicReferenceView(topic: group.key, questions: group.value, train: {})
+            }
+            else if snapshotMode == "topic-expanded",
+                    let question = store.questions.first(where: { $0.examNumber == 173 }) {
+                ScrollView {
+                    TopicQuestionReferenceRow(question: question, initiallyExpanded: true)
+                        .padding(28)
+                        .frame(maxWidth: store.settings.readingSize.contentMaxWidth)
+                }
+            }
             else if snapshotMode == "personal-editor" {
                 ZStack {
                     Color(nsColor: .windowBackgroundColor).ignoresSafeArea()
@@ -86,6 +98,7 @@ struct SnapshotRootView: View {
             else if let snapshotGlossary { GlossaryCard(entry: snapshotGlossary) }
             else { MainView() }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .preferredColorScheme(snapshotColorScheme)
         .background(Color(nsColor: .windowBackgroundColor))
         .background(SnapshotCaptureView())

@@ -615,6 +615,66 @@ struct CoreTestRunner {
             }
         }))
 
+        tests.append(("topic quick reference covers the exact bank without recording", {
+            let questions = try AppStore.decoder.decode([Question].self, from: Data(contentsOf: content.appendingPathComponent("questions.json")))
+            let topics = Dictionary(grouping: questions, by: \.topic)
+            try expect(!topics.isEmpty && topics.values.allSatisfy { !$0.isEmpty }, "empty topic is visible")
+            try expect(topics.values.reduce(0) { $0 + $1.count } == 405, "topic counts do not sum to 405")
+            try expect(questions.allSatisfy { !$0.officialCorrectAnswerText.isEmpty }, "quick-reference answer missing")
+            let sample = questions.first!
+            try expect(sample.matchesReferenceQuery("\(sample.examNumber)"), "topic search cannot find question number")
+            try expect(sample.matchesReferenceQuery(sample.officialCorrectAnswerText), "topic search cannot find correct answer")
+            try expect(sample.matchesReferenceQuery(String(sample.stem.prefix(20))), "topic search cannot find stem")
+            let store = AppStore(persistenceURL: temporaryURL(), loadContent: false)
+            _ = sample.matchesReferenceQuery(sample.explanationShort)
+            try expect(store.studyStep == 0 && store.progress.isEmpty, "reference browsing recorded an attempt")
+        }))
+
+        tests.append(("all 405 verified option sets preserve IDs and comparison semantics", {
+            let questions = try AppStore.decoder.decode([Question].self, from: Data(contentsOf: content.appendingPathComponent("questions.json")))
+            func normalized(_ value: String) -> String {
+                value.lowercased().replacingOccurrences(of: "ё", with: "е").filter {
+                    $0.isLetter || $0.isNumber || "<=>+-*/^()".contains($0)
+                }
+            }
+            for question in questions {
+                let normalizedOptions = question.options.map { normalized($0.text) }
+                try expect(question.options.count == 4 && Set(normalizedOptions).count == 4, "duplicated or incomplete options Q\(question.examNumber)")
+                try expect(question.options.contains(where: { $0.id == question.correctOptionId }), "correct option missing Q\(question.examNumber)")
+                try expect(Set(question.wrongOptionExplanations.keys) == Set(question.options.filter { $0.id != question.correctOptionId }.map(\.id)), "wrong-option map mismatch Q\(question.examNumber)")
+            }
+            let byNumber = Dictionary(uniqueKeysWithValues: questions.map { ($0.examNumber, $0) })
+            let q123 = byNumber[123]!
+            try expect(q123.correctOptionId == "q-123-option-2" && q123.options.map(\.text) == ["QRM", "QRT", "QRN", "QRZ"], "Q123 QRT regression")
+            try expect(q123.wrongOptionExplanations[q123.correctOptionId] == nil, "QRT appears in Q123 wrong-option map")
+            let q359 = byNumber[359]!
+            try expect(q359.correctOptionId == "q-359-option-3" && q359.options[2].text == "D < V < R", "Q359 comparison operators changed")
+            try expect(normalized(q359.options[0].text) != normalized(q359.options[2].text), "Q359 opposite relations normalized as equal")
+        }))
+
+        tests.append(("final category-2 figure set equals the visually audited manifest", {
+            let questions = try AppStore.decoder.decode([Question].self, from: Data(contentsOf: content.appendingPathComponent("questions.json")))
+            let byNumber = Dictionary(uniqueKeysWithValues: questions.map { ($0.examNumber, $0) })
+            var expected: [Int: String] = [32: "diagrams/questions/q-032.png", 263: "diagrams/questions/q-263.png", 406: "diagrams/questions/q-406.png", 407: "diagrams/questions/q-407.png"]
+            for number in 136...142 { expected[number] = "diagrams/questions/q-\(String(format: "%03d", number)).png" }
+            for number in 173...176 { expected[number] = "diagrams/questions/fm-transmitter.png" }
+            for number in 177...180 { expected[number] = "diagrams/questions/superhet-receiver.png" }
+            for number in [322, 323, 326, 327, 328, 331, 332, 341, 342, 343, 344, 353, 354, 355] {
+                expected[number] = "diagrams/questions/q-\(String(format: "%03d", number)).png"
+            }
+            try expect(Set(questions.filter { $0.figureAsset != nil }.map(\.examNumber)) == Set(expected.keys), "figure-question set differs from manifest")
+            for (number, asset) in expected {
+                try expect(byNumber[number]?.figureAsset == asset, "wrong figure mapping for Q\(number)")
+                try expect(FileManager.default.fileExists(atPath: content.appendingPathComponent(asset).path), "missing figure for Q\(number)")
+            }
+            let manifestData = try Data(contentsOf: content.appendingPathComponent("diagrams/questions/figure-manifest.json"))
+            let manifest = try JSONSerialization.jsonObject(with: manifestData) as! [String: Any]
+            let entries = manifest["questions"] as! [[String: Any]]
+            let manifestNumbers = Set(entries.compactMap { $0["examNumber"] as? Int })
+            try expect(manifestNumbers == Set(expected.keys), "manifest question set mismatch")
+            try expect(entries.allSatisfy { ($0["visuallyInspected"] as? Bool) == true && ($0["answerKeyExcluded"] as? Bool) == true }, "manifest lacks visual/answer-key verification")
+        }))
+
         tests.append(("all glossary references resolve", {
             let questions = try AppStore.decoder.decode([Question].self, from: Data(contentsOf: content.appendingPathComponent("questions.json")))
             let glossary = try AppStore.decoder.decode([GlossaryEntry].self, from: Data(contentsOf: content.appendingPathComponent("glossary.json")))

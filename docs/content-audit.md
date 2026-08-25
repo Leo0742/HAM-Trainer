@@ -15,16 +15,17 @@ Generated: reproducible
 
 ## Structural, answer, glossary, and assets
 
-- Official stems / option sets unchanged from `ContentRaw`: **405/405** / **405/405**.
+- Official stems / source-verified option sets: **405/405** / **405/405**.
 - Resolved correct option IDs: **405/405**.
 - Answer matches exact / manual / fuzzy: **400 / 5 / 0**.
+- Full source option audit: **405 questions / 1620 options**; exact sets / explicit source-checked cleanup overrides: **400 / 5**; unresolved: **0**.
 - Built-in glossary entries: **176**; exact authored educational records: **176**; normalized `fromZero == shortDefinition`: **0**.
 - Glossary source: `ContentAuthored/built-in-glossary-176.json`; SHA-256 `2d3902bb049064066bc71766405237ab7ab39cc7b2b123de249700a1230bc1d3`.
-- Exam figures / teaching diagrams: **26 / 9**; missing assets: **0**.
+- Exam figures / teaching diagrams: **27 / 9**; missing assets: **0**.
 
 ## Preserved source files
 
 - `Справочник_КЭ.pdf` — SHA-256 `8108c82eb316069167a7ae3e525a9991637e2f547f12fbbde637e684dbad55d7`
 - `radiolyubitel_2_category_guide_2026.pdf` — SHA-256 `163c01bded0c4b5cee92892948f15eab32b226f6f0bd0edc70f0beecd6317749`
 
-Machine-readable details: [`content-audit.json`](content-audit.json) and [`answer-match-audit.json`](answer-match-audit.json).
+Machine-readable details: [`content-audit.json`](content-audit.json), [`answer-match-audit.json`](answer-match-audit.json), and [`full-option-audit.json`](full-option-audit.json).

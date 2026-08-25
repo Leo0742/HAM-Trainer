@@ -30,11 +30,14 @@ def normalized(value: str) -> str:
 def main() -> None:
     subprocess.run(["python3", str(ROOT / "Tools/validate_content.py")], check=True)
     subprocess.run(["python3", str(ROOT / "Tools/audit_answer_matches.py")], check=True)
+    subprocess.run(["python3", str(ROOT / "Tools/audit_option_sets.py")], check=True)
 
     questions = json.loads((CONTENT / "questions.json").read_text(encoding="utf-8"))
     raw = json.loads((ROOT / "ContentRaw/questions-imported.json").read_text(encoding="utf-8"))
+    overrides = json.loads((ROOT / "ContentOverrides/question-overrides.json").read_text(encoding="utf-8")).get("questions", {})
     glossary = json.loads((CONTENT / "glossary.json").read_text(encoding="utf-8"))
     answer_audit = json.loads((DOCS / "answer-match-audit.json").read_text(encoding="utf-8"))
+    option_audit = json.loads((DOCS / "full-option-audit.json").read_text(encoding="utf-8"))
     authored_bytes = AUTHORED_PATH.read_bytes()
     authored_digest = hashlib.sha256(authored_bytes).hexdigest()
     authored = json.loads(authored_bytes)["questions"]
@@ -45,7 +48,16 @@ def main() -> None:
     raw_by_number = {q["examNumber"]: q for q in raw}
 
     unchanged_stems = sum(by_number[n]["stem"] == raw_by_number[n]["stem"] for n in by_number)
-    unchanged_options = sum(by_number[n]["options"] == raw_by_number[n]["options"] for n in by_number)
+    verified_options = 0
+    for number in by_number:
+        expected_options = raw_by_number[number]["options"]
+        option_text = overrides.get(str(number), {}).get("optionTextById", {})
+        if option_text:
+            expected_options = [
+                {**option, "text": option_text.get(option["id"], option["text"])}
+                for option in expected_options
+            ]
+        verified_options += by_number[number]["options"] == expected_options
     resolved_correct_ids = sum(any(o["id"] == q["correctOptionId"] for o in q["options"]) for q in questions)
     authored_exact = sum(
         all(q[field] == authored[str(q["examNumber"])][field] for field in DIRECT_FIELDS)
@@ -120,11 +132,18 @@ def main() -> None:
             "uniqueExamNumbers": len(by_number),
             "resolvedCorrectOptionIds": resolved_correct_ids,
             "unchangedOfficialStems": unchanged_stems,
-            "unchangedOfficialOptionSets": unchanged_options,
+            "verifiedOfficialOptionSets": verified_options,
         },
         "answerMatching": {
             "exact": answer_audit["exact"], "manual": answer_audit["manual"],
             "unresolvedFuzzy": answer_audit["fuzzy"], "unresolved": answer_audit["unresolved"],
+        },
+        "fullOptionAudit": {
+            "questionsChecked": option_audit["questionsChecked"],
+            "optionsChecked": option_audit["optionsChecked"],
+            "sourceExactOptionSets": option_audit["sourceExactOptionSets"],
+            "explicitSourceCheckedOptionOverrides": option_audit["explicitSourceCheckedOptionOverrides"],
+            "unresolved": option_audit["unresolved"],
         },
         "glossary": {
             "entries": len(glossary),
@@ -148,9 +167,10 @@ def main() -> None:
     if glossary_authored_digest != GLOSSARY_AUTHORED_SHA256: failures.append("authored glossary checksum")
     if unresolved_wrong or unresolved_glossary: failures.append("content mappings")
     if legacy_sources: failures.append("legacy generated explanation source")
-    if unchanged_stems != 405 or unchanged_options != 405: failures.append("official wording/options")
+    if unchanged_stems != 405 or verified_options != 405: failures.append("official wording/options")
     if resolved_correct_ids != 405: failures.append("correct option IDs")
     if answer_audit["fuzzy"] or answer_audit["unresolved"]: failures.append("answer matching")
+    if option_audit["questionsChecked"] != 405 or option_audit["optionsChecked"] != 1620 or option_audit["unresolved"]: failures.append("full option audit")
     if len(glossary) != 176 or glossary_exact != 176: failures.append("authored glossary coverage")
     if missing_assets or unresolved_requested_exam_figures: failures.append("assets")
     if not all(item["unchanged"] for item in source_files): failures.append("source PDF hash")
@@ -176,9 +196,10 @@ Generated: reproducible
 
 ## Structural, answer, glossary, and assets
 
-- Official stems / option sets unchanged from `ContentRaw`: **{unchanged_stems}/405** / **{unchanged_options}/405**.
+- Official stems / source-verified option sets: **{unchanged_stems}/405** / **{verified_options}/405**.
 - Resolved correct option IDs: **{resolved_correct_ids}/405**.
 - Answer matches exact / manual / fuzzy: **{answer_audit['exact']} / {answer_audit['manual']} / {answer_audit['fuzzy']}**.
+- Full source option audit: **{option_audit['questionsChecked']} questions / {option_audit['optionsChecked']} options**; exact sets / explicit source-checked cleanup overrides: **{option_audit['sourceExactOptionSets']} / {option_audit['explicitSourceCheckedOptionOverrides']}**; unresolved: **{len(option_audit['unresolved'])}**.
 - Built-in glossary entries: **{len(glossary)}**; exact authored educational records: **{glossary_exact}**; normalized `fromZero == shortDefinition`: **{len(identical_from_zero)}**.
 - Glossary source: `{GLOSSARY_AUTHORED_PATH.relative_to(ROOT)}`; SHA-256 `{glossary_authored_digest}`.
 - Exam figures / teaching diagrams: **{len(original_assets)} / {len(teaching_assets)}**; missing assets: **{len(missing_assets)}**.
@@ -187,7 +208,7 @@ Generated: reproducible
 
 {source_lines}
 
-Machine-readable details: [`content-audit.json`](content-audit.json) and [`answer-match-audit.json`](answer-match-audit.json).
+Machine-readable details: [`content-audit.json`](content-audit.json), [`answer-match-audit.json`](answer-match-audit.json), and [`full-option-audit.json`](full-option-audit.json).
 """
     (DOCS / "content-audit.md").write_text(markdown, encoding="utf-8")
     if failures:

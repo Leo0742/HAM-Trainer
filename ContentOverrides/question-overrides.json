@@ -1,6 +1,18 @@
 {
   "schemaVersion": 1,
   "questions": {
+    "23": {
+      "optionTextById": {
+        "q-023-option-4": "RL3DX"
+      },
+      "optionAuditNote": "The source option ends at RL3DX; Figure 1 begins immediately afterward on the next PDF page."
+    },
+    "32": {
+      "optionTextById": {
+        "q-032-option-4": "Лицензию HAREC."
+      },
+      "optionAuditNote": "The source option ends after HAREC; Figure 2 is a separate table below the four options."
+    },
     "36": {
       "correctOptionIndex": 2,
       "answerMatchNote": "Guide wording has a grammatical typo; source option 3 is the same definition with corrected grammar."
@@ -32,6 +44,24 @@
     "359": {
       "correctOptionId": "q-359-option-3",
       "answerMatchNote": "The source uses D < V < R. The previous normalizer discarded comparison operators and incorrectly treated D > V > R as an exact match."
+    },
+    "408": {
+      "optionTextById": {
+        "q-408-option-4": "Для измерения текущего значения выходной мощности."
+      },
+      "optionAuditNote": "The following blue safety-section heading is not part of option 4."
+    },
+    "419": {
+      "optionTextById": {
+        "q-419-option-4": "Только углекислотные огнетушители."
+      },
+      "optionAuditNote": "The following blue electromagnetic-compatibility heading is not part of option 4."
+    },
+    "426": {
+      "optionTextById": {
+        "q-426-option-4": "14 МГц."
+      },
+      "optionAuditNote": "The source option ends after 14 МГц; the notes, printed answer key, appendices, and contents follow the bank."
     }
   }
 }
